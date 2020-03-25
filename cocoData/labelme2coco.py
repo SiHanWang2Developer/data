@@ -1,4 +1,4 @@
-# -*- coding:utf-8 -*-
+# -*- coding:utf-8-*-
 # !/usr/bin/env python
 
 import argparse
@@ -158,7 +158,7 @@ class labelme2coco(object):
         json.dump(self.data_coco, open(self.save_json_path, 'w'), indent=4, cls=MyEncoder)  # indent=4 更加美观显示
 
 
-labelme_json = glob.glob('./pic/images/*.json')
+labelme_json = glob.glob('./train/images/*.json')
 # labelme_json=['./Annotations/*.json']
 
-labelme2coco(labelme_json, 'pic/pic.json')
+labelme2coco(labelme_json, 'train/train.json')
