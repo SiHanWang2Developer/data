@@ -1,0 +1,1316 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "name": "““坚果改造笔画cuda_error”的副本”的副本",
+      "provenance": [],
+      "collapsed_sections": [],
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "accelerator": "GPU"
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/SiHanWang2Developer/data/blob/master/outputs%5B%22instances%22%5D.pred_masks\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "colab_type": "code",
+        "id": "-UPaAdWoVgJx",
+        "colab": {}
+      },
+      "source": [
+        ""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "QHnVupBBn9eR",
+        "colab_type": "text"
+      },
+      "source": [
+        "# [How to train Detectron2 with Custom COCO Datasets](https://www.dlology.com/blog/how-to-train-detectron2-with-custom-coco-datasets/) | DLology\n",
+        "\n",
+        "<img src=\"https://dl.fbaipublicfiles.com/detectron2/Detectron2-Logo-Horz.png\" width=\"500\">\n",
+        "\n",
+        "This notebook will help you get started with this framwork by training a instance segmentation model with your custom COCO datasets."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "2bVqmEoGK4jf",
+        "colab_type": "text"
+      },
+      "source": [
+        "本文参考https://colab.research.google.com/drive/16jcaJoc6bCFAQ96jDe2HwtXj7BMD_-m5"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "jVDC4G20IuIm",
+        "colab_type": "code",
+        "outputId": "932bada5-1c51-4bd1-b96a-61da61c8739e",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 289
+        }
+      },
+      "source": [
+        "!/opt/bin/nvidia-smi"
+      ],
+      "execution_count": 44,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Sat Apr  4 16:01:26 2020       \n",
+            "+-----------------------------------------------------------------------------+\n",
+            "| NVIDIA-SMI 418.67       Driver Version: 418.67       CUDA Version: 10.1     |\n",
+            "|-------------------------------+----------------------+----------------------+\n",
+            "| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |\n",
+            "| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |\n",
+            "|===============================+======================+======================|\n",
+            "|   0  Tesla P100-PCIE...  Off  | 00000000:00:04.0 Off |                    0 |\n",
+            "| N/A   41C    P0    34W / 250W |   3573MiB / 16280MiB |      0%      Default |\n",
+            "+-------------------------------+----------------------+----------------------+\n",
+            "                                                                               \n",
+            "+-----------------------------------------------------------------------------+\n",
+            "| Processes:                                                       GPU Memory |\n",
+            "|  GPU       PID   Type   Process name                             Usage      |\n",
+            "|=============================================================================|\n",
+            "+-----------------------------------------------------------------------------+\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "vM54r6jlKTII",
+        "colab_type": "text"
+      },
+      "source": [
+        "# Install detectron2"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "9_FzH13EjseR",
+        "colab_type": "code",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 428
+        },
+        "outputId": "1d20ce04-1a2d-4245-be7a-1f13f8d42f48"
+      },
+      "source": [
+        "!pip install -U torch torchvision\n",
+        "!pip install git+https://github.com/facebookresearch/fvcore.git\n",
+        "import torch, torchvision\n",
+        "torch.__version__"
+      ],
+      "execution_count": 45,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Requirement already up-to-date: torch in /usr/local/lib/python3.6/dist-packages (1.4.0)\n",
+            "Requirement already up-to-date: torchvision in /usr/local/lib/python3.6/dist-packages (0.5.0)\n",
+            "Requirement already satisfied, skipping upgrade: six in /usr/local/lib/python3.6/dist-packages (from torchvision) (1.12.0)\n",
+            "Requirement already satisfied, skipping upgrade: pillow>=4.1.1 in /usr/local/lib/python3.6/dist-packages (from torchvision) (7.0.0)\n",
+            "Requirement already satisfied, skipping upgrade: numpy in /usr/local/lib/python3.6/dist-packages (from torchvision) (1.18.2)\n",
+            "Collecting git+https://github.com/facebookresearch/fvcore.git\n",
+            "  Cloning https://github.com/facebookresearch/fvcore.git to /tmp/pip-req-build-lb3el4xd\n",
+            "  Running command git clone -q https://github.com/facebookresearch/fvcore.git /tmp/pip-req-build-lb3el4xd\n",
+            "Requirement already satisfied (use --upgrade to upgrade): fvcore==0.1 from git+https://github.com/facebookresearch/fvcore.git in /usr/local/lib/python3.6/dist-packages\n",
+            "Requirement already satisfied: numpy in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (1.18.2)\n",
+            "Requirement already satisfied: yacs>=0.1.6 in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (0.1.6)\n",
+            "Requirement already satisfied: pyyaml>=5.1 in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (5.3.1)\n",
+            "Requirement already satisfied: tqdm in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (4.38.0)\n",
+            "Requirement already satisfied: portalocker in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (1.6.0)\n",
+            "Requirement already satisfied: termcolor>=1.1 in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (1.1.0)\n",
+            "Requirement already satisfied: Pillow in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (7.0.0)\n",
+            "Requirement already satisfied: tabulate in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (0.8.7)\n",
+            "Building wheels for collected packages: fvcore\n",
+            "  Building wheel for fvcore (setup.py) ... \u001b[?25l\u001b[?25hdone\n",
+            "  Created wheel for fvcore: filename=fvcore-0.1-cp36-none-any.whl size=42662 sha256=420e55f28b337b0f5a29fd839d2569f780f25a749ae775ae185758879ecfb900\n",
+            "  Stored in directory: /tmp/pip-ephem-wheel-cache-iiv49ww2/wheels/48/53/79/3c6485543a4455a0006f5db590ab9957622b6227011941de06\n",
+            "Successfully built fvcore\n"
+          ],
+          "name": "stdout"
+        },
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "'1.4.0'"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          },
+          "execution_count": 45
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "GeejixTmwEmI",
+        "colab_type": "code",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 768
+        },
+        "outputId": "b8bf9f3d-bcee-424a-bd95-e67f9a9b72f3"
+      },
+      "source": [
+        "# install detectron2:\n",
+        "!pip install detectron2 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu100/index.html\n",
+        "# clone the repo to access PointRend code. Use the same version as the installed detectron2\n",
+        "!git clone --branch v0.1.1 https://github.com/facebookresearch/detectron2 detectron2_repo"
+      ],
+      "execution_count": 46,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Looking in links: https://dl.fbaipublicfiles.com/detectron2/wheels/cu100/index.html\n",
+            "Requirement already satisfied: detectron2 in /usr/local/lib/python3.6/dist-packages (0.1.1+cu100)\n",
+            "Requirement already satisfied: tensorboard in /usr/local/lib/python3.6/dist-packages (from detectron2) (2.2.0)\n",
+            "Requirement already satisfied: fvcore in /usr/local/lib/python3.6/dist-packages (from detectron2) (0.1)\n",
+            "Requirement already satisfied: yacs>=0.1.6 in /usr/local/lib/python3.6/dist-packages (from detectron2) (0.1.6)\n",
+            "Requirement already satisfied: matplotlib in /usr/local/lib/python3.6/dist-packages (from detectron2) (3.2.1)\n",
+            "Requirement already satisfied: cloudpickle in /usr/local/lib/python3.6/dist-packages (from detectron2) (1.3.0)\n",
+            "Requirement already satisfied: pydot in /usr/local/lib/python3.6/dist-packages (from detectron2) (1.3.0)\n",
+            "Requirement already satisfied: future in /usr/local/lib/python3.6/dist-packages (from detectron2) (0.16.0)\n",
+            "Requirement already satisfied: tabulate in /usr/local/lib/python3.6/dist-packages (from detectron2) (0.8.7)\n",
+            "Requirement already satisfied: Pillow in /usr/local/lib/python3.6/dist-packages (from detectron2) (7.0.0)\n",
+            "Requirement already satisfied: tqdm>4.29.0 in /usr/local/lib/python3.6/dist-packages (from detectron2) (4.38.0)\n",
+            "Requirement already satisfied: termcolor>=1.1 in /usr/local/lib/python3.6/dist-packages (from detectron2) (1.1.0)\n",
+            "Requirement already satisfied: google-auth<2,>=1.6.3 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (1.7.2)\n",
+            "Requirement already satisfied: google-auth-oauthlib<0.5,>=0.4.1 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (0.4.1)\n",
+            "Requirement already satisfied: markdown>=2.6.8 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (3.2.1)\n",
+            "Requirement already satisfied: protobuf>=3.6.0 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (3.10.0)\n",
+            "Requirement already satisfied: requests<3,>=2.21.0 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (2.21.0)\n",
+            "Requirement already satisfied: absl-py>=0.4 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (0.9.0)\n",
+            "Requirement already satisfied: setuptools>=41.0.0 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (46.0.0)\n",
+            "Requirement already satisfied: tensorboard-plugin-wit>=1.6.0 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (1.6.0.post2)\n",
+            "Requirement already satisfied: werkzeug>=0.11.15 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (1.0.1)\n",
+            "Requirement already satisfied: wheel>=0.26; python_version >= \"3\" in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (0.34.2)\n",
+            "Requirement already satisfied: numpy>=1.12.0 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (1.18.2)\n",
+            "Requirement already satisfied: grpcio>=1.24.3 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (1.27.2)\n",
+            "Requirement already satisfied: six>=1.10.0 in /usr/local/lib/python3.6/dist-packages (from tensorboard->detectron2) (1.12.0)\n",
+            "Requirement already satisfied: pyyaml>=5.1 in /usr/local/lib/python3.6/dist-packages (from fvcore->detectron2) (5.3.1)\n",
+            "Requirement already satisfied: portalocker in /usr/local/lib/python3.6/dist-packages (from fvcore->detectron2) (1.6.0)\n",
+            "Requirement already satisfied: pyparsing!=2.0.4,!=2.1.2,!=2.1.6,>=2.0.1 in /usr/local/lib/python3.6/dist-packages (from matplotlib->detectron2) (2.4.6)\n",
+            "Requirement already satisfied: python-dateutil>=2.1 in /usr/local/lib/python3.6/dist-packages (from matplotlib->detectron2) (2.8.1)\n",
+            "Requirement already satisfied: cycler>=0.10 in /usr/local/lib/python3.6/dist-packages (from matplotlib->detectron2) (0.10.0)\n",
+            "Requirement already satisfied: kiwisolver>=1.0.1 in /usr/local/lib/python3.6/dist-packages (from matplotlib->detectron2) (1.1.0)\n",
+            "Requirement already satisfied: cachetools<3.2,>=2.0.0 in /usr/local/lib/python3.6/dist-packages (from google-auth<2,>=1.6.3->tensorboard->detectron2) (3.1.1)\n",
+            "Requirement already satisfied: pyasn1-modules>=0.2.1 in /usr/local/lib/python3.6/dist-packages (from google-auth<2,>=1.6.3->tensorboard->detectron2) (0.2.8)\n",
+            "Requirement already satisfied: rsa<4.1,>=3.1.4 in /usr/local/lib/python3.6/dist-packages (from google-auth<2,>=1.6.3->tensorboard->detectron2) (4.0)\n",
+            "Requirement already satisfied: requests-oauthlib>=0.7.0 in /usr/local/lib/python3.6/dist-packages (from google-auth-oauthlib<0.5,>=0.4.1->tensorboard->detectron2) (1.3.0)\n",
+            "Requirement already satisfied: chardet<3.1.0,>=3.0.2 in /usr/local/lib/python3.6/dist-packages (from requests<3,>=2.21.0->tensorboard->detectron2) (3.0.4)\n",
+            "Requirement already satisfied: certifi>=2017.4.17 in /usr/local/lib/python3.6/dist-packages (from requests<3,>=2.21.0->tensorboard->detectron2) (2019.11.28)\n",
+            "Requirement already satisfied: urllib3<1.25,>=1.21.1 in /usr/local/lib/python3.6/dist-packages (from requests<3,>=2.21.0->tensorboard->detectron2) (1.24.3)\n",
+            "Requirement already satisfied: idna<2.9,>=2.5 in /usr/local/lib/python3.6/dist-packages (from requests<3,>=2.21.0->tensorboard->detectron2) (2.8)\n",
+            "Requirement already satisfied: pyasn1<0.5.0,>=0.4.6 in /usr/local/lib/python3.6/dist-packages (from pyasn1-modules>=0.2.1->google-auth<2,>=1.6.3->tensorboard->detectron2) (0.4.8)\n",
+            "Requirement already satisfied: oauthlib>=3.0.0 in /usr/local/lib/python3.6/dist-packages (from requests-oauthlib>=0.7.0->google-auth-oauthlib<0.5,>=0.4.1->tensorboard->detectron2) (3.1.0)\n",
+            "fatal: destination path 'detectron2_repo' already exists and is not an empty directory.\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "ZyAvNCJMmvFF",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# You may need to restart your runtime prior to this, to let your installation take effect\n",
+        "# Some basic setup\n",
+        "# Setup detectron2 logger\n",
+        "import detectron2\n",
+        "from detectron2.utils.logger import setup_logger\n",
+        "setup_logger()\n",
+        "\n",
+        "# import some common libraries\n",
+        "import matplotlib.pyplot as plt\n",
+        "import numpy as np\n",
+        "import cv2\n",
+        "from google.colab.patches import cv2_imshow\n",
+        "\n",
+        "# import some common detectron2 utilities\n",
+        "from detectron2 import model_zoo\n",
+        "from detectron2.engine import DefaultPredictor\n",
+        "from detectron2.config import get_cfg\n",
+        "from detectron2.utils.visualizer import Visualizer\n",
+        "from detectron2.data import MetadataCatalog, DatasetCatalog\n",
+        "\n",
+        "# import PointRend project\n",
+        "import sys; sys.path.insert(1, \"detectron2_repo/projects/PointRend\")\n",
+        "from detectron2_repo.projects.PointRend import point_rend"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "b2bjrfb2LDeo",
+        "colab_type": "text"
+      },
+      "source": [
+        "# Train on a custom COCO dataset"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "tjbUIhSxUdm_",
+        "colab_type": "text"
+      },
+      "source": [
+        "In this section, we show how to train an existing detectron2 model on a custom dataset in a new format.\n",
+        "\n",
+        "We use [the fruits nuts segmentation dataset](https://github.com/Tony607/mmdetection_instance_segmentation_demo)\n",
+        "which only has 3 classes: data, fig, and hazelnut.\n",
+        "We'll train a segmentation model from an existing model pre-trained on the COCO dataset, available in detectron2's model zoo.\n",
+        "\n",
+        "Note that the COCO dataset does not have the \"data\", \"fig\" and \"hazelnut\" categories."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "7RhkndJ6JWqO",
+        "colab_type": "code",
+        "outputId": "6f2a102e-e96c-41a1-ec35-e19410aa0b10",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 34
+        }
+      },
+      "source": [
+        "from google.colab import drive\n",
+        "drive.mount('/content/drive')"
+      ],
+      "execution_count": 48,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Drive already mounted at /content/drive; to attempt to forcibly remount, call drive.mount(\"/content/drive\", force_remount=True).\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "4Qg7zSVOulkb",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# # download, decompress the data\n",
+        "# !wget https://github.com/Tony607/detectron2_instance_segmentation_demo/releases/download/V0.1/data.zip\n",
+        "# !unzip data.zip > /dev/null"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "tVJoOm6LVJwW",
+        "colab_type": "text"
+      },
+      "source": [
+        "Register the fruits_nuts dataset to detectron2, following the [detectron2 custom dataset tutorial](https://detectron2.readthedocs.io/tutorials/datasets.html).\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Lnkg1PByUjGQ",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# from detectron2.data.datasets import register_coco_instances\n",
+        "# register_coco_instances(\"fruits_nuts\", {}, \"./data/trainval.json\", \"./data/images\")"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "MWknKqWTWIw9",
+        "colab_type": "code",
+        "outputId": "2f5a878f-6c4a-46a5-c7b8-1b6dc36f32d7",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 33
+        }
+      },
+      "source": [
+        "# fruits_nuts_metadata = MetadataCatalog.get(\"fruits_nuts\")\n",
+        "# dataset_dicts = DatasetCatalog.get(\"fruits_nuts\")"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "\u001b[32m[03/26 02:56:00 d2.data.datasets.coco]: \u001b[0mLoaded 18 images in COCO format from ./data/trainval.json\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "xI-aG4sj3cV2",
+        "colab_type": "text"
+      },
+      "source": [
+        "\n",
+        "\n",
+        "---\n",
+        "\n",
+        "\n",
+        "下面 笔画数据集\n",
+        "\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Retbdmc07rgd",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "from detectron2.data.datasets import register_coco_instances\n",
+        "register_coco_instances(\"wz\", {}, \"./drive/My Drive/pic566_28class/images566.json\", \"./drive/My Drive/pic566_28class/images\")"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "ttCvanr27rPN",
+        "colab_type": "code",
+        "outputId": "269f2976-fde0-4cbf-da52-83863f8afcf2",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 34
+        }
+      },
+      "source": [
+        "wanzheng_metadata = MetadataCatalog.get(\"wz\")\n",
+        "wanzhengdataset_dicts = DatasetCatalog.get(\"wz\")"
+      ],
+      "execution_count": 49,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "\u001b[32m[04/04 16:02:36 d2.data.datasets.coco]: \u001b[0mLoaded 566 images in COCO format from ./drive/My Drive/pic566_28class/images566.json\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "6ljbWTX0Wi8E",
+        "colab_type": "text"
+      },
+      "source": [
+        "To verify the data loading is correct, let's visualize the annotations of randomly selected samples in the training set:\n",
+        "\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "q38FZu0W37T4",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# #坚果数据集\n",
+        "# import random\n",
+        "\n",
+        "# for d in random.sample(dataset_dicts, 1):\n",
+        "#    img = cv2.imread(d[\"file_name\"])#!!!!!!!!!!!!!!!!!！！！！！！！！！！！\n",
+        "#    visualizer = Visualizer(img[:, :, ::-1], metadata=fruits_nuts_metadata, scale=0.5)\n",
+        "#    vis = visualizer.draw_dataset_dict(d)\n",
+        "#    cv2_imshow(vis.get_image()[:, :, ::-1])\n",
+        "#    cv2_imshow(img)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "F5JPh6Ur8FTD",
+        "colab_type": "code",
+        "outputId": "7d392be0-5328-4472-eb79-2f3a5e175697",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 145
+        }
+      },
+      "source": [
+        "#笔画数据集\n",
+        "import random\n",
+        "for d in random.sample(wanzhengdataset_dicts, 1):\n",
+        "    img = cv2.imread(d[\"file_name\"])\n",
+        "    visualizer = Visualizer(img[:, :, ::-1], metadata=wanzheng_metadata, scale=0.5)\n",
+        "    vis = visualizer.draw_dataset_dict(d)\n",
+        "    cv2_imshow(vis.get_image()[:, :, ::-1])"
+      ],
+      "execution_count": 50,
+      "outputs": [
+        {
+          "output_type": "display_data",
+          "data": {
+            "image/png": "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAvLklEQVR4nO19eZxdRZ3v71dVZ7lr\n3+7be7buThOykgABgiwCQgBFeQwqGkScYRxBR5FBlkEzyqASHfWh6DjORhThKYwgg8o2QXaFJJBA\nyJ70knR30uvtvus5p6p+74+693ZnISYknY7v5Uc+zblnqXPO71v126sOEhEcp4kjNtEP8P87HQdg\nguk4ABNMxwGYYDoOwATTcQAmmI4DMMF0HIAJpuMATDAdB2CC6TgAE0zHAZhgOg7ABNNxACaYjgMw\nwSQm9vbzZ8zVgT748x//6oN77SEiItKaGEMiIkUj63qVVlbIdqojosrRWluWxRgLgoBzTkSIiIgA\nEGqI1V/SeiTf59BpggHQgdYFudfOOxPX/TT75Paga9/zs+2p/bejtUFieO3u7qe2KEFIYJMADfG5\ntfWLWxQr8h0RGWMGAPN3YmmCATCEDNHm5Z93Fn4KHBjfz7NFmhJ77TEZPSklETHGt/9ibTcM9HlD\niKhJR+zw9E7K/Ghg6jUnxRfUMsYAgDHm9+bUPsBPCE08AI28+ifVt2ziO2fClG3Q81X42ffhs9/H\nR9dTxyKY9Rn4gAViJ/T/I9yfA6/pUwv2bUEpJaVkjA29uSvozq6RmwOmBBdSSu3p9X5bo1MDD7PE\nlvqF//ohd1KUc77j/rfeaTAdZTomlHCLaPwvePHDcFcWCh+Gc8zOBESvg0s+C/d+ApZtgI4lcEH5\nfCKSUhYKBaWU7/ue5zHGRtoHVl/z2Abs8FGaEwgIATXprkLvQ/3PbNmwecXJ/7rz0Q1BECiltD4E\n3TN+NPEjAAB6ZP8avg0AnoCVH4P3mp3zoLkZGv4D/g4ALOBvQvvYS4z4JiLGGGna+i8rNy19YVd4\n+O3cdkTct9KAMfZC76paUak/o9Nv9UWaKo8FBQDHCAAENGa7SAj4Kmz8Mvznfi8x6lRrndrY++b1\nT460D/7eWzWQHTZ2DtAebQICIiqp+iD1FL3Kf2rHJlfWXtQ8fm908HRMiKBGUXMSNAPAxbDwDdhm\ndr6FbfOheQrUAkAInGlYu9dVMutv+tYrL59z/8aOzY/0r+j3UwiIgMbQ3ONUAiJChlrrjMxt6Nsa\nDBeOkXqcY2IEbJfdH+Hv/Qf4xHbq+RW+eC7MA4AhSt8JP/8GfMoGAQD/TI93QC8RBUGQa09tvfe1\nHT9bl48Gr8i1/buKNo9Wush9BCQEBADgnJv9gngcwgmITmY1zZ8+JUgVJvatDR0TACjQS2E5ABiW\nfQbuMfJjJWy6hr5lurPWGhG7ntm8/furep9r8xvZi/7K4d6MYS5hUeQwZI7jFAoFxhlpIqAIufVY\nldTxGqjwKkFV4Fk/uop6PH8oP1HvO5aOCQAOQEWNSiCHCvld2T8ueaTL7l+rN+XbCgwZECBDrTQC\nGpuHiDzP44xXUayWEnVQFWbuwDRv+sdPnvXRhc2zphuPofvB9cdFUJG6Vf9fDC+1q0L7PaoD5fXm\nvL6sZlTQ3m9yL/nDPgJqpVEgMiRNiAgEiCiIN2CyFiobIBlEKTMHz/zSB+vPaq5KVpX9Nc55oXCs\nKACYcAAe/+qD2fZUaGp82rXzTZAAAIyF3v9K55bvvdrz5JZCLb0e29A9shsACoWCEVOMMa004wwI\nEjxaoxLVVFHHqwaT+aaPzTtxycKmU08o36Uc/DHth8NhxhjnfH9PdLRp4kcAACBiEASGTX7O63t8\n2+bv/CHdOdTtDL4u3853eubQc7CG4SjXOCAqZASoEV3hxEJ2IsRjHF5aAS/t0f7q1av3veNReK+D\noWMCACLinOd3pdt+8vr2H6/OC7+dejYV2v0R3+hWBAQEBoIjZ5oYIGrgjP++7ZWrLr4q5xXVadHu\n+bOiYwKAXOfwq594ZNfjW7waehO2tPfudFxHKcUFl4F00K6kaBXE/0hvMwIuLCFc4kyhAkBXhvKy\nADaQJqOuD7J3HyNqYMIAICLf94fW7tr50HpvKNcdTb0erPe7AkTkjId9u4picYgkMR6B0EA0Ezu9\nPvzaH2KRimX3LatprOGc37PsHg36g9d9cPH7Fwtb3Pb52zo6Oz79N5/O5/M///nPAeCXv/zlTTfd\n1N3dvd8HOEak0IQBEAQBY6z32bbsruEhSkNBnkzThbAi6LpkeVzaU6NuczzcXNGycAYwVErB6v88\n47zTdnX1fPJDS4AgFo/BXV8e2NV7yekXfvqGz1x97ce/dss/qIJU+cAfzAMASe0NFfzBfPvyNXvd\nvbArMwHvvD+aMAA450EQtH72tNU/fq5Gx0ETEDght3pGfWhynLtCKWWMlkxHqmS06C3rNt1y9623\nf/2OZ3+34rWXXkWEJx59gjSsXbXmfZdfqAJFUpMsJnmIgHypC/IYiTzvlyZSBAkhdBVf+IULiMik\ntBCRc66UMieYcBvnnDGmlGIO79y+4/IzP3T24rNuvvOWV37/MhH4vmcieFwIbnEC4pZgjgAEJ+Sg\nLZgr9k3jGHLro0fzlfdLEzkCiGja5XOMCfQnz5dS2v8UTtYk+3b1PfzQI0MjI0v+cgkgKIHKQtsO\nIUc7Hu4d7j/77LPtZGjmzJmTp0x2Kl07HzJpHK21yQwLIUxgw0SWcE8yI++oaYijAcDcmfOUPALZ\nj/aO7RdddNHPHvgZIyalvOPGL//LAz8WzLLQRkIA8PPB44/+9pKLL/3F//nFW2vfam9rz48UcsOF\nNx57m4CUVIiotDKDDIv+GRKRVNKyLAQ0PiAyREBkGKuOnnBW0+E/+QFoP7mLI06zWucoXyXDNZ8/\n69avPXPLu26ns7vdBJzrnLqx+wWKiBVRttJIgb2fTO9P/v4+IjKSDRCISEntp4N0XyY7mM8MZqSv\nlSeVpNrWZNOpk5jFEJEhq5xUcfLlc971Ax8MHT0RhAwBgdvvPgCAiESAABoIgKgYPEWGHAQgZ4zR\nftuvaIwVRryh7uF0X3Zwx9DI7mxhxFMowSLNdP9grySptAqFQ/7W/O7N/TPOba5tTcJR8ROOHgCM\nI+fiU6d9ZlqsddhPLV//w5hV8RcnXB21Yr7yH97y095cz8dO/KuCzE+JNcWsit+0/deb/asQ2RXT\nl5yQmJXyB78++OWcl855uUD7Y1u2mSUsoR2NFtoxCwCIICgE0ldBPggK8sl/el4rXcA82NSX2r0r\n1VPQOS/wOOMAQESaNCJCBjjnDclGfJ22/7HzhHOaK+pj482Wo6qEa0J1D2z814cyP71m1g3zqk85\nre6sX225vy+/e1qs5crWq3/85ncAIG4nfrj2W7Xhhr+a/bdv9q+aW3Vy0q3+1qqvxK3YT5Y88NDr\ny9dsXHnFpCuM0wsAgLAoueicM87JVuf7s4NvjKzftbkvvTtr11k5lQGbOnd3vNi5ItC+0srETU3g\nGgGVUuVKIZNb1lr3DHR39e08o+nsbX/saDl9ynjz5KgCMFjo68p0AkBXur3SSTbFWj8563pziDPL\nbKwbXEOkd2e7YnYcAFoqTljTt5JID/vDWwc2AAAQhHkkxCMhHo6IaETEmiItuzYMdAQ7Uph6NfVq\nW/f2gs7JHsmQGYlvMjPFbCUgEBAWASSgYhSWQJMWXEglEbGnv9utiEg17rVDRxWAoPQ+GigmInmV\n++7rd+51jlRBabNY9yA9mUvlpaeCZhXkJALOS5wS6ECSlDrIqHTKH3KFs2O4vSe/662+NQyZcTKA\nwJQjAgMgKIeJTMyuOIIISBMAONyNuFFBlsNdC626yKTqloQlrPHmybgDULQ9YG+Vlpf5wULf/JqF\na/tWAWBjZHJXplMrCvJBdiDnFwIg2rWpb63/xjkzLnii7/FYOD6zfs5rm1/SQLsL3VSqe0BEXdTK\ngAgMGQFp0qhQacU4Kzt0AICEjgiFRdgC2xUhi9kOc8MibDM3QN9OCO3Khe89ubapujDkMzwa3sC4\nA8AYgzGWrmGHcXz/Y9WPPjb32gsa3s+QvbLtxdUbV3sNXiaVGxnMmBfPBplnNz81o37Wt678UX+m\nd3vv1pyf3QtJBEQAMlYWoKkUAgSXhWzuhKywjY5glstDIR52mCN5gBGCMPlW/sRTTlh47inhpBut\nCccr4pZl2battRZCvPHY26nukfFmDhwFP0BrPbt1jp8JlNKIoAKtpAIARCJmzEjwvYIGrYHM+UBU\n5ioQuZabDwoxJ37PVf/2rf9eqgL5dzO/NDoCAGbGToyJ+MbsliF/ePXwmyEeDoso2Uq7MrD9xKTo\nme9b9IW/v54B54IBFEcJ5hHSAAJAANhALmEpoYCIXtb/5SW/spvt1junjSt/xn0EEBEgBr5UvvLJ\n06Q0kNYKysmTsew2VBz4aMTK0su+FXVigolHV/9iOJ+KiWiIRy1mMeQWs2204lbCsezmhqbpDax1\nfnO8MZqckqhrqAMAIUQulwuFQs5XHfIIAgCjeAmxDz307vybOx/47wfaO9sZMh3X6BTVAwYYGnBZ\n5bjXTR0VEQQQijmZdM7y7YIuEKnSQQIYy24YA0OxhyPA0l//HUfOkMdF1GY2IiLgcDCUC7I5lcnL\n/KLkGeeef+60EyezekbvJVP3IETx1cLhcLkMFBmCKCJLQB55t/7gVgBARJtsN+WCBVAF4AD4xakH\n482fozEC/s/3Hh7qGk40xkco9buvPdef691ZaJdKEpBRdCZQwzkHBJs5YRaJ2RUuC1XYlbawC3Zu\n6vzGpgWTz4gurMokCs8Vvvv2d8fewuY2OojMmPRo2/ZejOOcG3XaWN9479/eu6F7w4kNJ27bsu0L\n//sLy/9h+V333bV269qFCxZ+6eovOcLp2d1z53/e6bMROip1g+MOQNkCyQzkIonYez+9aOXDaxtH\npqa9YY8KmWCEIXeY4/KQQCssIozxgBfqWmoqGmNVkysbm+rLdbjZ9hwOYEg5dW7j2FtUiESqfyQI\nVNDlDwyn9psZ9rI+Bujng6aapjse/Mob21//5uXfvPb91yIgR14br7vxqhuvXvqJvJe/4S+u//j7\nPv5v//VvuI/lNh50NEaAqRWUvkz3Sgfcsz5yenYo17W5J92dzQ0UCEiKoGZKMlTlJurjNY3VMAa2\nkV2ZssSIDkfsnBUC1+V7FBHZ3CkUPMlkQfrD3en9P4YiUKSV7h7sXrVpFRH99sXffOzijwECA3bq\nzFNmTJnxyLd+BQCWsF7f+DoPuBixFKj9tnYE6Wg4YtHqiKlrMCFJrXWkOtQ4q85UD44a6eVpQ1h0\njsxPE51XSoU915YOABXUaFUhIiIBjzEedliUJRrj+30G5IgaGWcExO3iTDFNGggUaAJ4cc1LX/ju\n540GssGKQpTXMxEd99qhozECWhZNMWF3xhiViDEmpSwzvbxh0iZj53CZa7XW+DyybSyzPbM7P5pn\nR4bC4lUnJKywpZKq8fw6IcS+DpTzRZsKZIesSVWTFs09fW3n2vef+/5V61edd9p5SsvXNr76j5+5\ns7GusWNXR8SNzKyaucPb0TCnlqb9+SthRPR9XwjxzDN8xw5gDDlnZkajUpxz7vt+OQFVX0+XXILl\nErmxjTDGaH8yGRErY5XMYYDAmFHqB3Jf2/vaP3LaR5Z+aGlbe9uDv3vwvNPOA4DBkcGb7rnpn2/5\nZ8dyOPB7f3Fv985urTXDP38zFABMx//4x08bGdmDNf/+7//9xS9ek04PJxLkOAQAjoPJ5N6Xl+va\n9stZrbXQAmxAjZr0n6zNkloufWQpEeF2LPiFD3/5w2b/y2+9/IGbP8CB10CNnqk58KOTlTwyACyc\nPwN08A4Hi9b0yEivCYkhlO2LgGgD0eDQEEMkxogh7d5Fc05ohLF8bF8Oxnbva4F0rcCGBU17DIUQ\nMp5fhQWXYxo6thHuMQiKJmmQRsVBZkFL8AYQAApxIWR4LJMRwjImYxmL+6gcTK2h3f3w1gvo7SY/\nhbpAMgsqB8qDirlUtQhKtgBjjJw6qL/kXWB2hEaADuqrI/d8/W+v+pu9o5sAxVAQY2RZ0dtvuz9Z\nPYkx/stffAMBPvjBG04//TIhrGXLPtG1c+PHrv6y72W3rf8ZAHz2i88+sPza4dQOyLYXG/IrIAgx\nrE9E9nhPrgXTAxBEMUhBrmNf9wkRV16/DLoSMClFix589fRPIDA47e9fbb034HnTGQSHan9SS9eH\n8P6rmejCJ94HPb9F1a43PyzJSmcLRKgINSEBVKXa3B0PUeMVOtKKiMQY7Dst5+DoyIogRObutYuI\nEIGIOKNTT71oYHDXP951OQCEQrFP/eXdIyMDN910+qWXXn/FFTfee+8NCEgAyBwAJETGbGQuRJqK\nbdlJsKKaMJXdg8MURXCSGITAETo8rez3mrCamcGKViVaceYI6U5BCmCz1nausjIfdSEWoogNnKF6\n6wR8/0/zhfWDwwVnGPWI25ujHSuzBKNFjwRk8miNNeGT9KMw5aMy3Cq0JKXwXZVTHEkAmOB33Hzt\n/JlT+wZGbv7mL6oro7dd/4FEPOL5wV0/+PW6Lb2B17nw1AtvuvH7mzf9/qWXnwKAV155dHJDlfI7\nm6Z9tLW5xnEsP+BkJwEAUYBTSXYemj5VZPR2jcNMUmZN+x4veelcxpNngkCoAT31TFNyAgCcsUJu\nBHNtWGgDmeH5YdnzBlv3Q6aG/RevoYpzIy7lfRzMQM4DX8LcnrqnGp/d/shuIjq5IxdP51MRWNNO\nQghTvQJUMnsJ3uwsvLYZrr3gMav+PEjMhzG23CHRkQRg6qSar3zn19+49/G7b/vIBWfOuux9C5b9\n+LedXQNzZ0y6/bMf/M2TL/X3tX3n25cka0+/9NLPt0xfBABhl9u22Na+2w8gGra1luV3EKIYUTCT\nfhljJtNSvFnpTY29RJpAK53rY72vq6H1cuhtkdsM+bZQ0J+VoaGCZW+7RvdO697d++LwUNYX7109\nu0H17+jj5XgPElbkpnVXrzS9veyaFJeXgOJEHSgFKAhoMIP/+lT+C5f8RsbmkNb4rgJHRxKA7p6B\nTdt7AGDj1p6G2sT8WVOW3fYRc8gSAgAqKup6+3av2/BQLjf4kSv/FgAiEbuvb6iqGogonfH6+3fM\nmfu+zZufaGiYWVk5yVyrlLIsqzi1WgMAIEJFmJIxrIpAdUwJFeDb/whpO3B3pvp+lZd2R/dQd783\nlMXBDGmd5oIvaMvE0+lUtJAKA6Bs7DstHeqiUfZDJF+XDnXn+CDCqBFMREoqxhnjTCtNWETC2HUc\niSMozTh4an+Tkw+GjiQAflDMOCqiZCyczhSWfOFfykcRobFx1t/c8PMgUFL6zz799b/46Pf3bIBW\nrXz8jEUf+dznHtq5c93AQEdxd7ZNZray3DbdEWc9FWFx9pevIF9C1qNCAL4EPaD/uG4YvdoBLde+\nmSrqAALGUJfSYeXEHCKSprrUSd2Vq8osQ8B4YXJX9asGknLO0rGwvpKHbR1xKB7GsMNcS4dsjLlU\nFUNbUF5FfBF3mc0YY5wbL/KQmDZefkAmV+jenbrw7Nn/89J6RDihqX7duvUbNjz32sonB1MFrfXJ\ncyddd11rIh5OVka3bl29dOml82bWD6eHvn7XB2a31pEqoC6A8kD7/u/mZ2SooJxg4+XUN29KACu3\nMKVHu9tkgHQeIlCUV8XkOytGGsx/RnKbVEw8PwUAfJFBBJuTbaEjqGagZve8xxfPh7ANUZdqQxQZ\nAV2DmXNjGRUb8SPSqp+zcLHPkiI6WTt1PqvCcF3ItqF9OeQ6tNZw6NyHIwcAjflb3PjK9x75+xs+\ncN1V5wrGn3px3a/++1kiAiDGin0UAUbSuUQ8NPfESX6gcnlfqwC076W7/UApDVKBVPBPj+YB8og4\nnwqTAScBqDGDvagbjWgmMItDFKNJCI4FsRBGHGoc0ZUuqCpZv4Dqt8zn1V2LZpAloOBD1oNMHsPD\n050LIwsvvoecOh6ZjNYJ0JVgzVbsqp/EABoAACAIAs4YIArGUKnyvDPzNKaO+FAZd1gAFEM0iADY\nvavvqr/+qmYhBurnD/4KdUAUfP6mPwBIJEVaIfGd3QMImiEh2G+u32HU7c6eQa2JMWfmCTWZnEca\nBtN7xCCL4Wggxhgp2NvVJY0ANTGMcV0Topo6cgVEXYiHIBEBpSErQ3mK82wd9dUPhZzteElt6otv\nDg288AxP5zUiI6LZfHZiCktcu5TFYmAUuwPAANCkmkvMEmJsGS+ULR9EzjmKd8PMwx0BBnaSWfT6\nNDANXGkgRAAEYhqw4OkgUJow7CSUcgT3XXuoZ2hmyNptWvjtgzcnKkKW5X7vX57Z2flM2B244eLi\n3PYih4nMYg8IOuQglzC5EhxBjoCIC44AtpWmNcalVzNs8RPO/4pb2QxuvbJq806dr+1IJFLpOIwY\ntVH9NGq9+kZxtnjJf3iEtFEPlmXNlrPZjSwUDgFAsRfjmH9lZo1h8ViL00Sv4Og7YkoppRQRvXL/\nEtx67x82wcubQVMp/wem2lsj40qpN9o+OJJrroi0L2y9/zuPPdJa/1TU2Q0AX12aAci80f7JSZWJ\n8+aGTp3+M6WUxTEZY5URqoxQzIWKMFTHqaoP/H6BXTiQof4RGEzDYAZGCuxLs+zEaV/FDFYlFZwC\nprKhXIzOGNNaMygu1QQZYOtYB3SwkiiM63izaObXFmPUSql3kiS0l+g7EnRYAJjHRUSMz9Z1l56u\nn9jQg30pMuVmRMQ4A4Sya0pAiECaGhMr0/kGAwBjFLJRMF4dV/Om0kcXUX2VHbbkUCGyOxuranqP\nkzyJoq2BMy3YOt/ucPOd+SfXsTGlicXqIPOXC27EghDCZIaNnDShTa01voB94b5gODApB0ScT/P1\nJzQPc2P8HECRjkd47rAAYIxZlsU5J8awcr4Wkave8+sHX4CBdNHqAIDiTHbDHQbxEJzYoM6b+8oL\n66+aMwXCDtkCRvLw6hZwIpU1M6+InnN+qOU90m6otJxEiYNgzJvOYuJ3D4ubiuoBOCDH8qJk5Sc0\nE0A0FN1j9hTrZt3F8iEARmwBLoDPFhs7OhHQsXS4I8CyLEQkzolzFZsVmup9ZvGT+YLfn1apHCql\nwg6FbAg79OvXdNcg1VfxRXMqs7T9V3+s39hNOQ8LPhBAQfJE7VTb3VEb68X+53nJwChPZeGMwcB0\nSFcLbFywZ56EM4mDazHvAMtAx7bRxxsrwAdbaCiK4TT/3UlpZ9WCJgBQiGxSbiZFe1nkadZpAcCo\nIu2bDkNRiGSgfRscmAq7DoeHh2sFjWayiGyuVWKOrpithjqShc5kZls2k3YqJqNTjU6ysPFMRc3O\nlMzkMxovn4WfvndSILkjtCMAABxLcMoJPYy5DhPSMk4qQ1NRCwQAhQoIHATaKxqKROAPke+il4Js\nuxkfe/Vl9Cu0F2C/p/stmL6rEovotAzNC924Ev0uJhkAQFn++BUQKPCHRmOx40OHOwKKW249am2K\n2hAgFp9u5H6EjUZvYjUn9HtRtB3lTonYempjumeoIRbuUVoBgCIEEQG7CiJNwNhY/pU3yEmiFSPY\nJxoaR7SrQNngCIg07StEiIjsKrAi2BEbSfQM54vVYHFVE/Ea4ENZcJpMFmE0l2BXgxUFm4/GYst1\nlaVut8dPt/7d8fAIOWL1l4CJRhEBAOMctIaSCC6eUwN6ROkkspZzGMAFFwf//u/TELsBGBFFIjZG\nW3RVE007Gzjfr0lH2zWOMKmze0RDES6ay+2qMyALUAPQdM5+Ho8Iqgkz4L8YrEo9v7YPjfl/AZyU\n+ysVmfFJbSYKIhb/AUAN7NVgMUrBGBDJkqW0h//5rlICRyznaabyCiGMt8I5N+VQbAyZo2b7wgvB\nsposyyrpQ2R/Kp37rqnYYTVZW6yteqsZnTazT+GnRG6OmGmwRu690wOYlTEBIAiCIAgAwPd9KaXn\neUEQSCmllO9uGcZDGAG7dkHhgKt87Vf4lqmvD1Ip6OujtjZAxBkzLKKWSZPmIWoA6OuzslkYGMCO\nDngnnybSj/YIWExMa1owdj+iGBgAVgCJ+5fYWutoPzjb0NEqOnlyFCYjYnNm8nCllxEWawcAxtge\nt4z0gRgCGYFsOxCRUqbGVRvVbtQTY0xKzTkrvTjt6wu7LtQfUDgdAgAXXbSwvr7+Rz+654orrjr4\nq8qUSqHnkePg8uUEAA89tLquLgcwORJJExER1xo9j3I5LIuBsUREwgcmwQYWiST2OIbo+8B8CjzI\nZnGsaC4JQLQ8crdDLuyFwwkAQmQzBlry18eyWW00jtaq6LIxprUWHqMAfY8yGSCCQoGkBK1ZEICU\n6PtUKAQAoDUzSioSYeEwVVURwKiGKOYqDiiaDlkHIMJeneWQLixfbtvB4sXuo486iJ1EUCjYdXVk\n2xSJvBMA4DggBAHoXC61hycQ15ZFKIk5GA4Xw1OISKTLGLgu2p16FwwWvLRWOu5FY9IdXiwjdplL\nzPO01iyfpyBgVgasERoRum0TaM0Qme/nfT+vVKC1lNIbHOzXWmmtiBQRNDY2xeM1qVR4xgxwHEDE\nfB60Jq3N0DlyADDG7rzzjvnz5/f19d18883V1dW33XZbIpHwPO/rX/96e3v71772tWw2O2vWrGQy\n+YMf/GDFihWMsVtvvfXkkxd2de3WWj3xxGMrVqxobRWLF4/cf789MrKWqCoeh8ZGVlsLzc041sYY\nCwC1EQ1RgWRHx9qiJ4wAADT3wkQFBwuwChOTtZnqbqbDm0aCILCiFu/lSP6ZmdkuhBM6njmd1P3g\neVJJrjUnAmRQyI/IwFMkKQXc1239O5/JvJrPp8v1ZPvtWAC4ceNLjLE5c86W8uyFC4OaGt3VZRUK\nxYzbAQbBIQMwbdrUpUu/8o1vfOPuu+++4IILLrvssmXLlnV2ds6dO/e222674YYbACCZTP71X/91\nU1PTd7/73RUrVpx//vkNDQ2LF380Fqt84YX/euKJxwBASrl4cRhgGqIF0DhlitLaaMID3b0cP4Cx\nBewAUkoBwrytUiyX47mczmRUEFj9/bl8njWuhZZqqhHTc5Eg63r9bjaowvzKbC6bDgIvCDyl/HJX\nNYxmjA1HUtmKYUQwTNz/I1FxvGqt169/ubd3h+9fedppbAxmB3qlQwagq6t706ZNALBx48aGhob5\n8+cvW7bMHLJt22w8//zzWuvt27cnk0kAWLBgwYoVK7Sm3t6BV15ZZc7hnFdU0Lx5bN26ZilrW1oI\nEaWURKOBMCrls8xiHSYfaYL+th12Q/FQOBYJVzC0O3cQ5iG9G7enGBHl88NKFaQsaB309OwYHu5v\n3lHxWitoJRFRk2bIqJ+INCIjrmlPY9BwnDGWcjMwJgbHWDHva+Tb2OcsXaV7e9uff/4BxGtOPBFM\nTO/AWZpDBsD3i5OklVLJZDKdTi9ZsuSdztl33BFBJgODg7h8OUipFiygt976X5wHFRVogjZGYggh\ngoDyecrlwPNwaCiXy0HlJsvtwUkifPkVd0jpB34hCDylAhrALZu38oLs0X0rVq8E0FIGpddGKSXn\nrDuqMYamjxNpzjmRWb4DtdYltoIpACtzufTUOOaoPkCP1pps2xoa6t6w4Tnbvqi1FbTWSsEBEjWH\n5YhlMpnu7u4LL7zwf/7nfxCxtbV1y5Yte4lLIlqzZs1ll122fPnjNTWVZ5556iOPPFEo6O3bNRGr\nrtYXX2w9+6zgXPf2glLq6ae173PfBykpCHJS5rT2+/t3Dw8Pzu2vashF62Tzpo2vjhUIkqqGBroc\nsPKQDtBjDAGKUWUizTkDAERmpgsbrpoJayXZAiX+FtktBCMCrc2qOcY5QxP21xo4Z5wLxgTnlhA2\n55YQFufFn6FQhHOrpmZqKKQA/nSC7HA94aVLl95+++3XXXcd5/zpp5/esmXLPqfgihW/X7jw9Gee\nebira/dbb21Mp7Na48gIUwoR+bRpwdVX57RWvq96ewd+97s1+Xw6nx9WKlDKVKkUeTNJn5SgBhqN\nRBvGYXmpbkQUgmtNAJoxswFCmEA/M+NSazK8RmQAYFmubYccJ+I4YceJuG7Uth1m6iCYYIyXuWxZ\njhC2bYcYEwDG+JFEgdYSQGodaO0TBS0tU0Mhi3NtWYqI/8n1MQ+qmMJMdz7ppNNMd3Cc/bSjFEmp\niZAItEYTFtLamMMQDoczmXQ8HnvssQeuvPKa3t7exYs/53lZraVSumw4AgARWZZQSnPOtdZjsyDn\nqHkt0Hg2zXsCXx0DAFykF/4G/+Cg1UupF9jakv0DjhNxnJBtG+aGbTtsmGjYHYtVWlZY60DrvFI5\nKXNKZRMJZ+bM6ZaFQoAQaFmMcxICDYs5J8tijiMsS+zFN5MaCYLAcRxjfbW3Qz7PwmFqbh79aMq+\ndLAjwNxPawQgzwOtQakii7UmUx6pNWgtTeadiAB0Pp+XMkCE5csfrqiosCzx7W9/b/v2LQAwMjJg\nRAQAMsaMoFBKMYZSSiO7GUNdTCcUrWmzLhACMmEJbgluccviaaumusVFOxxScvKsSKQiEkkwZmnt\nK5WXMiuEmj69MRIRtq1tm1wXOZfhMLcsRUScR4SoMJEGo+2F4DCqPBEAtOZSUlnZ7lV+Uha5e+Up\nxx49LAC01vl83vdBSg1AWitECALP933jjJRmN76jofahD314r51YWo7MdH+ldOnyshuJAOA44Vgs\nGY1WhcOJpmxzo19p7XZmnnCODDzPz3te1vOyjOG8ec1Ca6qGBWeRZalwmLsucu4CuESJMr+0Bsa4\n53mWZZm7IwocM3nEpNL2tVtGMx/7jXWXM06l8BcACAGcA+fE+WE7YkQUCoV++MOXe3vlli2vbd78\nspk45PujJelmzkVJU5XSwggmylbeU+Z4OQFrHo5zZlluKFQRiVTGYknXjdXWTg6FEgBUKAzU1Lh1\ndaFJW3h0N6qu/K8f/Z7SquwELJr7d3W1EQwYVIOu04jWHlHYEtjm7p7n2ba977pk5VWT9+J+uZ0y\nl9+JRQc4egA6KABMXrClRRApxt5TKKS7ut4u9V9l7muUWznTXe4sRFSsAhqt42Cci0gkEYtVR6NV\njhNNJutjsRpEDpCrrQ1FItK2/ZoaN5FAx2EAtcW4SgpgBHws5iDLFXCAe/TBsfwq3XGUL47jwD62\nefmEfRXmQfL0nU575wBrkQ5WBzDGAGjSpHA0mvL9RVVVk9evf9b3CyURWRzCRoiXrT1zYThcEYsl\no9FkOFwRi1Ulk41ChDwv5bqyvj7kOEFNjVtZiZEIKuVYFlcKjP1QfrHRbrhvGArN9zHoT86NOTbp\nEAAwnaOiIvae98CqVTRp0g1tbW/4fh7RRPMZIhoDzrbDjhMOhaKRSIUQISnztk3RqLAs6TiUTEaE\n0JxXGVNdSqkUDgzg0BArGc6sLKPGxoUig2RnwEY+ZcpJxjan4gopdmoIUeI7haMnhA4cui/TQQFg\nmKu1AmAAPJeTc+fW9PV5tr2o9Ak7U0eliYhzjEYtIZRtQzzuWpYmsszQRrQRUUpSyqwVxomIMQtK\nYrqsCY3lTlS02Q2jhQ8YgFMKR5eVZzEcrSDwIJt9d+yaMDpYAAAgEuGcg5RSSiUENjbitGnIuW0Y\nYcrHxyzJaQpyJOe8WLYJxXzfGPm7l9BgY3binicgADg2WBYS6Ww2NUYjIsW1ZQEioYORyLvnxXiQ\nu/eMob3pEDxhk9mREpRCAGVSvyaTSgQAXCkA0GYyhbmECEqlqwAAjOHhLImqtxPLYI5UR8easnRi\njNlzFkfqCHOINVDT9C4bnyg65FCEyeuWxYXZWZYGOGaK7345vd9Y/yFTcSWhItnaRhd15k/PUT0G\n6ZABMLwrC+vynlISag/NCeNWa1ZcywDBZjYgaPZuavOPBTrkhx5rX++1AXsa3XsZ4Ptt5OCp7FXs\ntT/EQhDZo8G9zixPjzH2gtbaRB1MWXEQBFRaOtyQKSQ12+ac8rWH+swHQ+M4U372woVHZK0RAvjJ\nypUAUI8YBagSvGLBAnMIEWp0IhuhHYAuQIFglxl2UPTCDeOKE+1KOXdgTGstGRsiSnGeJ1KIGkAh\nKoAAURJVEs0DEKWxjIwRUSXAgiPxRmNpHAFQALX19d//5jc//Jd/eTjtEEAvEQGEAbmZRlyZKHfH\nqF+Zi8AIgCLKAfaavj+aw2JEpLTOAKSJcojDRGmANIACsImE1plUqni+AY9IK2VVVLwRDi9AnDpG\nlo6HMD0ai3VYh/HkRppUE0kpY2S5AEA6GB42YgYALB2lKMUBXQQOUKX1sNYpgBHGUoh9QZBhzGfM\nktIbHkbfJ8+jQqF/506ZH/MlvZJ8KXOZMRaqrV01d26/EBdyPkykxuezV+MCwFgjxxbinrvumjVr\n1qpVq+6+++6zzz77uuuucxxn3bp1y5Ytq6+v//a3v93e3l4+AQCuvPLKJUuWDA0NDQwMvPjii48/\n/vi5WisiDAJBIpDUsoO5PBxxYmE3XmfXwIju3+V7WnRq9gxjlMvR8DDlcpjL9be1jXR3ByMjpFS5\nSGI0WzfmmbEU0S1/dz4FsOv3v4drr12dTJ7K+YDWMA56ftxHQGtLy1fuuKOrq+v++++fPXv2kiVL\nrr/+es/zbrvttvPOO2/Dhg0tLS13lE6YOnVqPp9fsmTJNddcwxh74IEHnnvxxQLic0SdudxkCkeY\nPpO5l066rOBCztFpW+52gh1VI/0dwzKf27Fx94bXXlNBMUZLpaX7iuq0tBP2l9UdnV84xrrTnrfh\nvvvgk5/cVV9/xp/RCDBxZvOqW9vaOjs7AWDLli3V1dWtra333XcfADiO09PTs37Dhu1tbZs7OyXi\n+q1bIw0NVaHQ7197bUMupwCefOWVQaKeIPjP7u7h/v7ZO6BiiF6Y6XteVvleSWQjdWujJAdERgrf\nBOXN3cteIZayuiaGegCDphwtL/4MgvXLl8PnPrc6Hr+ESJas8COlEcZrBJjxHgB4vp9BJCKPKAvw\n9PPP3/KNbygihagQJ9fXZ4OgR0ogygdBQSnwPL9QyPX3g1Iqmw2Ghwv9/W/99KcAUJxWyYBcwhDu\nZQcXMzzIsTTPq2x9QskmLnsw71jlA+bTBMW6IGZZyJgVCpHrlj9nfGSV8bgA4HkeEWUQIwAKoM/3\nEcBTiodCixYujEWjO3burIzFXNsu9PfrIMj39QGA8n0/nV6zadNXbrwxbFlgWRedf/6qNWvKzWoi\nHONLG2Fd5u9oKkIIEQ5bkYgViTDXZa4rwmFm28J1SYiK6mo7HDYxKUIsZlPHbjBmNkzBPWrNAGYi\nNioFpQrqI4jBuABgepkHIPN50jrf3w8AyvO62ttvvP32B37wA8uygiD43K23DqZSsKdi7Orp+cl9\n9/3h6ad7+/s3bN48ks2WGzQvPRrzcBw7mXSqq3k8bsXj0fp6O5HQtg0A3PNcresikQhRlCjBWIwo\nChAmCmktgiDsOKC1I4QA4GP+mZ/CFLFobaoRMpnM6/F4//iUz4/L2tEmh9x0zjlSa1koyHQa9nsX\nRBgNPqPJuwNROBTK5fPhUGjFY499/NOfbu/oOPHzn+cVFXYy6SSTTiJRPW2aisVIiITvT3fdKYh1\nStVKWW/bUQChtVmKzmR3qVSlbL5la2oXQqHQAaajFvXEGHrZsnYT1SGe92chgqSUtm1XImaFyIXD\nyJjMZKCklkf7OxGM4X4Zg6/dfvt7zzrLdZz/eOih7nQ6VFc345Zb7Fxuejg8BaBWygaiyYhJIuG6\nxbAgItp2sb5cCCIam0M3f01iFRFd1zXzh9/p+ceullLeOND8jcOgcRkBRCSlnLNoUUDEATytM4zJ\nbFblcmQWRy/BgIwh52hZTAgz6xWFQCKUMmJZXGsH0UZ85eWXXSF0adqTMVQsa9y/rlCm5wB6AWoB\nzjvSLY8XAL7vv8DYAOdC6wqiEaKXpOwSAon8wUGmtRWNascBy+KZTFTKadFoJUBUqRrLshGL1bhj\nGjQqFw6YQB8/SgH4f14AKKWeRxxgTGttilWUlEKIDFGvUj5iJedRojAilopBlFLGwDb1FmpMyoEh\nGlECUESAxi3QfQAaDwDGyw8QQiQBOIBGNGs2cCGIqJax5lImq3xyuWbI/J+ZhA/nAKBLjivuOW/G\nGEWHm9g5REqMQ5tH40t6x+kA9GeZRfp/iY4DMMF0HIAJpuMATDAdB2CC6TgAE0zHAZhgOg7ABNNx\nACaYjgMwwXQcgAmm4wBMMB0HYILpOAATTMcBmGD6v9OUEAFtWf36AAAAAElFTkSuQmCC\n",
+            "text/plain": [
+              "<PIL.Image.Image image mode=RGB size=128x128 at 0x7F719F0FCB00>"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          }
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "wlqXIXXhW8dA",
+        "colab_type": "text"
+      },
+      "source": [
+        "Now, let's fine-tune a coco-pretrained R50-FPN Mask R-CNN model on the fruits_nuts dataset. It takes ~6 minutes to train 300 iterations on Colab's K80 GPU.\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "7unkuuiqLdqd",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# from detectron2.engine import DefaultTrainer\n",
+        "# from detectron2.config import get_cfg\n",
+        "# import os\n",
+        "\n",
+        "# cfg = get_cfg()\n",
+        "# cfg.merge_from_file(\"./detectron2_repo/configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml\")\n",
+        "# cfg.DATASETS.TRAIN = (\"fruits_nuts\",)\n",
+        "# cfg.DATASETS.TEST = ()   # no metrics implemented for this dataset\n",
+        "# cfg.DATALOADER.NUM_WORKERS = 2\n",
+        "# cfg.MODEL.WEIGHTS = \"detectron2://COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x/137849600/model_final_f10217.pkl\"  # initialize from model zoo\n",
+        "# cfg.SOLVER.IMS_PER_BATCH = 2\n",
+        "# cfg.SOLVER.BASE_LR = 0.02\n",
+        "# cfg.SOLVER.MAX_ITER = 300    # 300 iterations seems good enough, but you can certainly train longer\n",
+        "# cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128   # faster, and good enough for this toy dataset\n",
+        "# cfg.MODEL.ROI_HEADS.NUM_CLASSES = 3  # 3 classes (data, fig, hazelnut)\n",
+        "\n",
+        "# os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)\n",
+        "# trainer = DefaultTrainer(cfg)\n",
+        "# trainer.resume_or_load(resume=False)\n",
+        "# trainer.train()"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "nEuB2wY_8kCv",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "from detectron2.engine import DefaultTrainer\n",
+        "from detectron2.config import get_cfg\n",
+        "import os\n",
+        "\n",
+        "cfg = get_cfg()\n",
+        "\n",
+        "# Add PointRend-specific config\n",
+        "point_rend.add_pointrend_config(cfg)\n",
+        "cfg.MODEL.POINT_HEAD.NUM_CLASSES = 28#修改POINT_HEAD.NUM_CLASSES为28 默认值为80\n",
+        "\n",
+        "# cfg.merge_from_file(\"./drive/My Drive/Colab Notebooks/detectron2_repo/configs/COCO-InstanceSegmentation/Base-PointRend-RCNN-FPN.yaml\")\n",
+        "cfg.merge_from_file(\"./drive/My Drive/Colab Notebooks/detectron2_repo/projects/PointRend/configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco.yaml\")\n",
+        "cfg.DATASETS.TRAIN = (\"wz\",)\n",
+        "cfg.DATASETS.TEST = ()   # no metrics implemented for this dataset\n",
+        "cfg.DATALOADER.NUM_WORKERS = 2\n",
+        "\n",
+        "# cfg.MODEL.WEIGHTS = \"detectron2://COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x/137849600/model_final_f10217.pkl\"  # initialize from model zoo\n",
+        "cfg.MODEL.WEIGHTS = \"https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl\"\n",
+        "\n",
+        "cfg.SOLVER.IMS_PER_BATCH = 2\n",
+        "cfg.SOLVER.BASE_LR = 0.02\n",
+        "cfg.SOLVER.MAX_ITER = 100    # 300 iterations seems good enough, but you can certainly train longer\n",
+        "cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE =256   # faster, and good enough for this toy dataset\n",
+        "cfg.MODEL.ROI_HEADS.NUM_CLASSES = 28  # 28 classes (heng,shu....)\n",
+        "# assert cfg.MODEL.ROI_HEADS.NUM_CLASSES == cfg.MODEL.POINT_HEAD.NUM_CLASSES\n",
+        "\n"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "pVtTbR_A-WBq",
+        "colab_type": "code",
+        "outputId": "3335df6a-1194-4f22-da5c-c5fcac529a6d",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 1000
+        }
+      },
+      "source": [
+        "#正式训练\n",
+        "os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)\n",
+        "trainer = DefaultTrainer(cfg)\n",
+        "trainer.resume_or_load(resume=False)\n",
+        "trainer.train()\n",
+        "\n",
+        "       "
+      ],
+      "execution_count": 60,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "\u001b[32m[04/04 16:07:40 d2.engine.defaults]: \u001b[0mModel:\n",
+            "GeneralizedRCNN(\n",
+            "  (backbone): FPN(\n",
+            "    (fpn_lateral2): Conv2d(256, 256, kernel_size=(1, 1), stride=(1, 1))\n",
+            "    (fpn_output2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n",
+            "    (fpn_lateral3): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1))\n",
+            "    (fpn_output3): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n",
+            "    (fpn_lateral4): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1))\n",
+            "    (fpn_output4): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n",
+            "    (fpn_lateral5): Conv2d(2048, 256, kernel_size=(1, 1), stride=(1, 1))\n",
+            "    (fpn_output5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n",
+            "    (top_block): LastLevelMaxPool()\n",
+            "    (bottom_up): ResNet(\n",
+            "      (stem): BasicStem(\n",
+            "        (conv1): Conv2d(\n",
+            "          3, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False\n",
+            "          (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "        )\n",
+            "      )\n",
+            "      (res2): Sequential(\n",
+            "        (0): BottleneckBlock(\n",
+            "          (shortcut): Conv2d(\n",
+            "            64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv1): Conv2d(\n",
+            "            64, 64, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (1): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (2): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "      )\n",
+            "      (res3): Sequential(\n",
+            "        (0): BottleneckBlock(\n",
+            "          (shortcut): Conv2d(\n",
+            "            256, 512, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv1): Conv2d(\n",
+            "            256, 128, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (1): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (2): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (3): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "      )\n",
+            "      (res4): Sequential(\n",
+            "        (0): BottleneckBlock(\n",
+            "          (shortcut): Conv2d(\n",
+            "            512, 1024, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "          (conv1): Conv2d(\n",
+            "            512, 256, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (1): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (2): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (3): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (4): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (5): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "      )\n",
+            "      (res5): Sequential(\n",
+            "        (0): BottleneckBlock(\n",
+            "          (shortcut): Conv2d(\n",
+            "            1024, 2048, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=2048, eps=1e-05)\n",
+            "          )\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 512, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=2048, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (1): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=2048, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (2): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=2048, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "      )\n",
+            "    )\n",
+            "  )\n",
+            "  (proposal_generator): RPN(\n",
+            "    (anchor_generator): DefaultAnchorGenerator(\n",
+            "      (cell_anchors): BufferList()\n",
+            "    )\n",
+            "    (rpn_head): StandardRPNHead(\n",
+            "      (conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n",
+            "      (objectness_logits): Conv2d(256, 3, kernel_size=(1, 1), stride=(1, 1))\n",
+            "      (anchor_deltas): Conv2d(256, 12, kernel_size=(1, 1), stride=(1, 1))\n",
+            "    )\n",
+            "  )\n",
+            "  (roi_heads): PointRendROIHeads(\n",
+            "    (box_pooler): ROIPooler(\n",
+            "      (level_poolers): ModuleList(\n",
+            "        (0): ROIAlign(output_size=(7, 7), spatial_scale=0.25, sampling_ratio=0, aligned=True)\n",
+            "        (1): ROIAlign(output_size=(7, 7), spatial_scale=0.125, sampling_ratio=0, aligned=True)\n",
+            "        (2): ROIAlign(output_size=(7, 7), spatial_scale=0.0625, sampling_ratio=0, aligned=True)\n",
+            "        (3): ROIAlign(output_size=(7, 7), spatial_scale=0.03125, sampling_ratio=0, aligned=True)\n",
+            "      )\n",
+            "    )\n",
+            "    (box_head): FastRCNNConvFCHead(\n",
+            "      (fc1): Linear(in_features=12544, out_features=1024, bias=True)\n",
+            "      (fc2): Linear(in_features=1024, out_features=1024, bias=True)\n",
+            "    )\n",
+            "    (box_predictor): FastRCNNOutputLayers(\n",
+            "      (cls_score): Linear(in_features=1024, out_features=29, bias=True)\n",
+            "      (bbox_pred): Linear(in_features=1024, out_features=112, bias=True)\n",
+            "    )\n",
+            "    (mask_coarse_head): CoarseMaskHead(\n",
+            "      (reduce_spatial_dim_conv): Conv2d(256, 256, kernel_size=(2, 2), stride=(2, 2))\n",
+            "      (coarse_mask_fc1): Linear(in_features=12544, out_features=1024, bias=True)\n",
+            "      (coarse_mask_fc2): Linear(in_features=1024, out_features=1024, bias=True)\n",
+            "      (prediction): Linear(in_features=1024, out_features=1372, bias=True)\n",
+            "    )\n",
+            "    (mask_point_head): StandardPointHead(\n",
+            "      (fc1): Conv1d(284, 256, kernel_size=(1,), stride=(1,))\n",
+            "      (fc2): Conv1d(284, 256, kernel_size=(1,), stride=(1,))\n",
+            "      (fc3): Conv1d(284, 256, kernel_size=(1,), stride=(1,))\n",
+            "      (predictor): Conv1d(284, 28, kernel_size=(1,), stride=(1,))\n",
+            "    )\n",
+            "  )\n",
+            ")\n",
+            "\u001b[32m[04/04 16:07:40 d2.data.datasets.coco]: \u001b[0mLoaded 566 images in COCO format from ./drive/My Drive/pic566_28class/images566.json\n",
+            "\u001b[32m[04/04 16:07:40 d2.data.build]: \u001b[0mRemoved 0 images with no usable annotations. 566 images left.\n",
+            "\u001b[32m[04/04 16:07:40 d2.data.common]: \u001b[0mSerializing 566 elements to byte tensors and concatenating them all ...\n",
+            "\u001b[32m[04/04 16:07:40 d2.data.common]: \u001b[0mSerialized dataset takes 1.53 MiB\n",
+            "\u001b[32m[04/04 16:07:40 d2.data.detection_utils]: \u001b[0mTransformGens used in training: [ResizeShortestEdge(short_edge_length=(640, 672, 704, 736, 768, 800), max_size=1333, sample_style='choice'), RandomFlip()]\n",
+            "\u001b[32m[04/04 16:07:40 d2.data.build]: \u001b[0mUsing training sampler TrainingSampler\n"
+          ],
+          "name": "stdout"
+        },
+        {
+          "output_type": "stream",
+          "text": [
+            "'roi_heads.box_predictor.cls_score.weight' has shape (81, 1024) in the checkpoint but (29, 1024) in the model! Skipped.\n",
+            "'roi_heads.box_predictor.cls_score.bias' has shape (81,) in the checkpoint but (29,) in the model! Skipped.\n",
+            "'roi_heads.box_predictor.bbox_pred.weight' has shape (320, 1024) in the checkpoint but (112, 1024) in the model! Skipped.\n",
+            "'roi_heads.box_predictor.bbox_pred.bias' has shape (320,) in the checkpoint but (112,) in the model! Skipped.\n",
+            "'roi_heads.mask_coarse_head.prediction.weight' has shape (3920, 1024) in the checkpoint but (1372, 1024) in the model! Skipped.\n",
+            "'roi_heads.mask_coarse_head.prediction.bias' has shape (3920,) in the checkpoint but (1372,) in the model! Skipped.\n",
+            "'roi_heads.mask_point_head.fc1.weight' has shape (256, 336, 1) in the checkpoint but (256, 284, 1) in the model! Skipped.\n",
+            "'roi_heads.mask_point_head.fc2.weight' has shape (256, 336, 1) in the checkpoint but (256, 284, 1) in the model! Skipped.\n",
+            "'roi_heads.mask_point_head.fc3.weight' has shape (256, 336, 1) in the checkpoint but (256, 284, 1) in the model! Skipped.\n",
+            "'roi_heads.mask_point_head.predictor.weight' has shape (80, 336, 1) in the checkpoint but (28, 284, 1) in the model! Skipped.\n",
+            "'roi_heads.mask_point_head.predictor.bias' has shape (80,) in the checkpoint but (28,) in the model! Skipped.\n"
+          ],
+          "name": "stderr"
+        },
+        {
+          "output_type": "stream",
+          "text": [
+            "\u001b[32m[04/04 16:07:40 d2.engine.train_loop]: \u001b[0mStarting training from iteration 0\n",
+            "\u001b[32m[04/04 16:07:46 d2.utils.events]: \u001b[0m eta: 0:00:23  iter: 19  total_loss: 4.879  loss_cls: 2.714  loss_box_reg: 0.917  loss_mask: 0.691  loss_mask_point: 0.657  loss_rpn_cls: 0.044  loss_rpn_loc: 0.074  time: 0.2814  data_time: 0.0182  lr: 0.000400  max_mem: 4831M\n",
+            "\u001b[32m[04/04 16:07:52 d2.utils.events]: \u001b[0m eta: 0:00:17  iter: 39  total_loss: 3.041  loss_cls: 1.013  loss_box_reg: 0.916  loss_mask: 0.582  loss_mask_point: 0.482  loss_rpn_cls: 0.023  loss_rpn_loc: 0.073  time: 0.2902  data_time: 0.0082  lr: 0.000799  max_mem: 4906M\n",
+            "\u001b[32m[04/04 16:07:58 d2.utils.events]: \u001b[0m eta: 0:00:11  iter: 59  total_loss: 2.530  loss_cls: 0.830  loss_box_reg: 0.860  loss_mask: 0.460  loss_mask_point: 0.347  loss_rpn_cls: 0.015  loss_rpn_loc: 0.055  time: 0.2898  data_time: 0.0083  lr: 0.001199  max_mem: 4906M\n",
+            "\u001b[32m[04/04 16:08:04 d2.utils.events]: \u001b[0m eta: 0:00:06  iter: 79  total_loss: 1.951  loss_cls: 0.615  loss_box_reg: 0.675  loss_mask: 0.341  loss_mask_point: 0.274  loss_rpn_cls: 0.008  loss_rpn_loc: 0.055  time: 0.2894  data_time: 0.0084  lr: 0.001598  max_mem: 4906M\n",
+            "\u001b[32m[04/04 16:08:11 d2.utils.events]: \u001b[0m eta: 0:00:00  iter: 99  total_loss: 1.572  loss_cls: 0.491  loss_box_reg: 0.540  loss_mask: 0.253  loss_mask_point: 0.247  loss_rpn_cls: 0.008  loss_rpn_loc: 0.055  time: 0.2908  data_time: 0.0084  lr: 0.001998  max_mem: 4906M\n",
+            "\u001b[32m[04/04 16:08:12 d2.engine.hooks]: \u001b[0mOverall training speed: 97 iterations in 0:00:28 (0.2938 s / it)\n",
+            "\u001b[32m[04/04 16:08:12 d2.engine.hooks]: \u001b[0mTotal training time: 0:00:30 (0:00:02 on hooks)\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "ivOaw1hgwLui",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# 加载预先训练好的模型权重\n",
+        "del_url = \"https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl\"\n",
+        "batch_size = 1    # just a random number\n",
+        "\n",
+        "\n",
+        "#获取模型model   def build_model(cls, cfg):Returns: torch.nn.Module:\n",
+        "PointRendModel = trainer.build_model(cfg)\n",
+        " \n",
+        "# # 使用预训练的权重初始化模型\n",
+        "# map_location = lambda storage, loc: storage\n",
+        "# if torch.cuda.is_available():\n",
+        "#     map_location = None\n",
+        "# PointRendModel.load_state_dict(model_zoo.load_url(model_url, map_location=map_location))\n",
+        "\n",
+        "# # 将训练模式设置为falsesince we will only run the forward pass.\n",
+        "# PointRendModel.train(False)\n",
+        "\n",
+        "\n",
+        "print('------------------------完美的分割线-------------------------------------')\n",
+        "\n",
+        "# # 打印模型的状态字典\n",
+        "# print(\"PointRendModel's state_dict:\")\n",
+        "# for param_tensor in PointRendModel.state_dict():\n",
+        "#     print(param_tensor, \"\\t\", PointRendModel.state_dict()[param_tensor].size())\n",
+        "\n",
+        "print('------------------------完美的分割线-------------------------------------')\n",
+        " \n",
+        "\n",
+        "\n",
+        "import torch.nn as nn\n",
+        "import torch.nn.init as init\n",
+        "import io\n",
+        "import numpy as np\n",
+        "from torch import nn\n",
+        "import torch.utils.model_zoo as model_zoo\n",
+        "import torch.onnx\n",
+        "\n",
+        "\n",
+        "# 输入模型\n",
+        "x = torch.randn(batch_size, 1, 224, 224, requires_grad=True)\n",
+        "# 导出模型\n",
+        "torch_out = torch.onnx._export(PointRendModel,             # model being run\n",
+        "        x,                       # model input (or a tuple for multiple inputs)\n",
+        "        \"super_resolution.onnx\", # where to save the model (can be a file or file-like object)\n",
+        "        export_params=False)      # store the trained parameter weights inside the model file                      "
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "0e4vdDIOXyxF",
+        "colab_type": "text"
+      },
+      "source": [
+        "Now, we perform inference with the trained model on the fruits_nuts dataset. First, let's create a predictor using the model we just trained:\n",
+        "\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "YM6RCjvB9vU4",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# Look at training curves in tensorboard:\n",
+        "%load_ext tensorboard\n",
+        "%tensorboard --logdir output"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Ya5nEuMELeq8",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, \"model_final.pth\")\n",
+        "cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5   # set the testing threshold for this model\n",
+        "cfg.DATASETS.TEST = (\"wz\", )\n",
+        "predictor = DefaultPredictor(cfg)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "qWq1XHfDWiXO",
+        "colab_type": "text"
+      },
+      "source": [
+        "Then, we randomly select several samples to visualize the prediction results."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "U5LhISJqWXgM",
+        "colab_type": "code",
+        "outputId": "14e920a7-a70e-43e4-9e6e-6123b7152c1b",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 561
+        }
+      },
+      "source": [
+        "from detectron2.utils.visualizer import ColorMode\n",
+        "\n",
+        "for d in random.sample(wanzhengdataset_dicts, 1):    \n",
+        "    im = cv2.imread(d[\"file_name\"])\n",
+        "    outputs = predictor(im)\n",
+        "    v = Visualizer(im[:, :, ::-1],\n",
+        "                   metadata=wanzheng_metadata, \n",
+        "                   scale=0.8, \n",
+        "                   instance_mode=ColorMode.IMAGE_BW   # remove the colors of unsegmented pixels用于实例化可视化的不同颜色模式  IMAGE_BW：与IMAGE相同，但将所有不带遮罩的区域转换为灰度。仅适用于按实例绘制蒙版预测\n",
+        "    )\n",
+        "    v = v.draw_instance_predictions(outputs[\"instances\"].to(\"cpu\"))\n",
+        "#输出预测结果masks\n",
+        "    print(outputs[\"instances\"].pred_masks)\n",
+        "\n",
+        "#结果masks的size    \n",
+        "    print(outputs[\"instances\"].pred_masks.size())#torch.Size([此图类别数, 256, 256]\n",
+        "\n",
+        "    print(outputs[\"instances\"].pred_boxes)#有几个框\n",
+        "    print(outputs[\"instances\"].pred_classes)#有几类\n",
+        "    print(outputs[\"instances\"].pred_classes.type)#有几类\n",
+        "\n",
+        "# #循环输出每一个mask\n",
+        "# for i in outputs[\"instances\"].pred_masks.size()[0,0]\n",
+        "#     mask = outputs[\"instances\"].pred_masks.[i,:,:]#第i个mask\n",
+        "#     mask = mask.astype(int)  #Python中将True/False 转换成 1/0 的方法\n",
+        "#     threshold = 0.5\n",
+        "#     table = []\n",
+        "#     for i in range(256):\n",
+        "#         if i < threshold:\n",
+        "#            table.append(0)\n",
+        "#        else:\n",
+        "#            table.append(256)\n",
+        "\n",
+        "cv2_imshow(v.get_image()[:, :, ::-1])\n",
+        "\n",
+        "\n",
+        "    #如何输出单独的mask\n",
+        "    "
+      ],
+      "execution_count": 82,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "tensor([[[False, False, False,  ..., False, False, False],\n",
+            "         [False, False, False,  ..., False, False, False],\n",
+            "         [False, False, False,  ..., False, False, False],\n",
+            "         ...,\n",
+            "         [False, False, False,  ..., False, False, False],\n",
+            "         [False, False, False,  ..., False, False, False],\n",
+            "         [False, False, False,  ..., False, False, False]],\n",
+            "\n",
+            "        [[False, False, False,  ..., False, False, False],\n",
+            "         [False, False, False,  ..., False, False, False],\n",
+            "         [False, False, False,  ..., False, False, False],\n",
+            "         ...,\n",
+            "         [False, False, False,  ..., False, False, False],\n",
+            "         [False, False, False,  ..., False, False, False],\n",
+            "         [False, False, False,  ..., False, False, False]]], device='cuda:0')\n",
+            "torch.Size([2, 256, 256])\n",
+            "Boxes(tensor([[ 86.3404,  29.3464, 172.4603,  52.5834],\n",
+            "        [ 26.2947,  71.7450, 233.9393, 107.3234]], device='cuda:0'))\n",
+            "tensor([1, 1], device='cuda:0')\n",
+            "<built-in method type of Tensor object at 0x7f70c75386c0>\n"
+          ],
+          "name": "stdout"
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "image/png": "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\n",
+            "text/plain": [
+              "<PIL.Image.Image image mode=RGB size=204x204 at 0x7F719ECEAFD0>"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          }
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "hLH2qPSMgOSk",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# look at the outputs. See https://detectron2.readthedocs.io/tutorials/models.html#model-output-format for specification\n",
+        "#我们解释一下detectron2中内置模型使用的输入/输出格式https://detectron2.readthedocs.io/tutorials/models.html\n",
+        "outputs[\"instances\"].pred_classes\n",
+        "outputs[\"instances\"].pred_boxes\n",
+        "print(outputs[\"instances\"].pred_masks)\n",
+        "#如何可视化mask?\n",
+        "#cv2_imshow(outputs[\"instances\"].pred_masks)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "t_bo0cypwllj",
+        "colab_type": "code",
+        "outputId": "306f13f0-fac2-4897-910d-07b08b30e5ea",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 53
+        }
+      },
+      "source": [
+        "wanzheng_metadata"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "Metadata(evaluator_type='coco', image_root='./drive/My Drive/pic566_28class/images', json_file='./drive/My Drive/pic566_28class/images566.json', name='wz', thing_classes=['piezhe', 'heng', 'hengzhewangou', 'pie', 'na', 'shuwangou', 'henggou', 'shugou', 'hengzhegou', 'hengzhezhezhegou', 'hengpie', 'shu', 'shuzhezhegou', 'dian', 'wangou', 'ti', 'shuti', 'shuzhe', 'wogou', 'hengzhe', 'xiegou', 'hengzhezhepie', 'hengzhewan', 'piedian', 'shuzhepie', 'hengxiegou', 'hengzheti', 'shuwan'], thing_dataset_id_to_contiguous_id={1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9, 11: 10, 12: 11, 13: 12, 14: 13, 15: 14, 16: 15, 17: 16, 18: 17, 19: 18, 20: 19, 21: 20, 22: 21, 23: 22, 24: 23, 25: 24, 26: 25, 27: 26, 28: 27})"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          },
+          "execution_count": 13
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "rvn2tueICLiE",
+        "colab_type": "text"
+      },
+      "source": [
+        "We can also evaluate its performance using AP metric implemented in COCO API. This gives an AP of ~70%. Not bad!"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "v4Y_TQ6YCOWT",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "from detectron2.evaluation import COCOEvaluator, inference_on_dataset\n",
+        "from detectron2.data import build_detection_test_loader\n",
+        "evaluator = COCOEvaluator(\"wz\", cfg, False, output_dir=\"./output/\")\n",
+        "val_loader = build_detection_test_loader(cfg, \"wz\")\n",
+        "inference_on_dataset(trainer.model, val_loader, evaluator)\n",
+        "# another equivalent way is to use trainer.test"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "wZ6lYrCqLLLW",
+        "colab_type": "text"
+      },
+      "source": [
+        "## Benchmark inference speed"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "PxRHYcAC_Z0f",
+        "colab_type": "code",
+        "outputId": "1b93541d-ed1d-4fb5-ff55-1427970e38df",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 33
+        }
+      },
+      "source": [
+        "import time\n",
+        "times = []\n",
+        "for i in range(20):\n",
+        "    start_time = time.time()\n",
+        "    outputs = predictor(im)\n",
+        "    delta = time.time() - start_time\n",
+        "    times.append(delta)\n",
+        "mean_delta = np.array(times).mean()\n",
+        "fps = 1 / mean_delta\n",
+        "print(\"Average(sec):{:.2f},fps:{:.2f}\".format(mean_delta, fps))"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Average(sec):0.07,fps:13.98\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "WFMOqBbWEh5v",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        ""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    }
+  ]
+}
