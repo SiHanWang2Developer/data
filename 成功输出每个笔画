@@ -1,0 +1,1278 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "name": "““坚果改造笔画cuda_error”的副本”的副本",
+      "provenance": [],
+      "collapsed_sections": [],
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "accelerator": "GPU"
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/SiHanWang2Developer/data/blob/master/%E6%88%90%E5%8A%9F%E8%BE%93%E5%87%BA%E6%AF%8F%E4%B8%AA%E7%AC%94%E7%94%BB\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "colab_type": "code",
+        "id": "-UPaAdWoVgJx",
+        "colab": {}
+      },
+      "source": [
+        ""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "QHnVupBBn9eR",
+        "colab_type": "text"
+      },
+      "source": [
+        "# [How to train Detectron2 with Custom COCO Datasets](https://www.dlology.com/blog/how-to-train-detectron2-with-custom-coco-datasets/) | DLology\n",
+        "\n",
+        "<img src=\"https://dl.fbaipublicfiles.com/detectron2/Detectron2-Logo-Horz.png\" width=\"500\">\n",
+        "\n",
+        "This notebook will help you get started with this framwork by training a instance segmentation model with your custom COCO datasets."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "2bVqmEoGK4jf",
+        "colab_type": "text"
+      },
+      "source": [
+        "本文参考https://colab.research.google.com/drive/16jcaJoc6bCFAQ96jDe2HwtXj7BMD_-m5"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "jVDC4G20IuIm",
+        "colab_type": "code",
+        "outputId": "9b9d1ceb-328f-4590-cf36-fa11f2881115",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 316
+        }
+      },
+      "source": [
+        "!/opt/bin/nvidia-smi"
+      ],
+      "execution_count": 26,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Fri Apr 10 09:49:13 2020       \n",
+            "+-----------------------------------------------------------------------------+\n",
+            "| NVIDIA-SMI 418.67       Driver Version: 418.67       CUDA Version: 10.1     |\n",
+            "|-------------------------------+----------------------+----------------------+\n",
+            "| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |\n",
+            "| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |\n",
+            "|===============================+======================+======================|\n",
+            "|   0  Tesla K80           Off  | 00000000:00:04.0 Off |                    0 |\n",
+            "| N/A   57C    P0    62W / 149W |   3632MiB / 11441MiB |      0%      Default |\n",
+            "+-------------------------------+----------------------+----------------------+\n",
+            "                                                                               \n",
+            "+-----------------------------------------------------------------------------+\n",
+            "| Processes:                                                       GPU Memory |\n",
+            "|  GPU       PID   Type   Process name                             Usage      |\n",
+            "|=============================================================================|\n",
+            "+-----------------------------------------------------------------------------+\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "vM54r6jlKTII",
+        "colab_type": "text"
+      },
+      "source": [
+        "# Install detectron2"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "9_FzH13EjseR",
+        "colab_type": "code",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 466
+        },
+        "outputId": "291391d5-8f6d-4134-898b-6b1ccd061d19"
+      },
+      "source": [
+        "!pip install -U torch torchvision\n",
+        "!pip install git+https://github.com/facebookresearch/fvcore.git\n",
+        "import torch, torchvision\n",
+        "torch.__version__"
+      ],
+      "execution_count": 28,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Requirement already up-to-date: torch in /usr/local/lib/python3.6/dist-packages (1.4.0)\n",
+            "Requirement already up-to-date: torchvision in /usr/local/lib/python3.6/dist-packages (0.5.0)\n",
+            "Requirement already satisfied, skipping upgrade: pillow>=4.1.1 in /usr/local/lib/python3.6/dist-packages (from torchvision) (7.0.0)\n",
+            "Requirement already satisfied, skipping upgrade: numpy in /usr/local/lib/python3.6/dist-packages (from torchvision) (1.18.2)\n",
+            "Requirement already satisfied, skipping upgrade: six in /usr/local/lib/python3.6/dist-packages (from torchvision) (1.12.0)\n",
+            "Collecting git+https://github.com/facebookresearch/fvcore.git\n",
+            "  Cloning https://github.com/facebookresearch/fvcore.git to /tmp/pip-req-build-pz66wuxt\n",
+            "  Running command git clone -q https://github.com/facebookresearch/fvcore.git /tmp/pip-req-build-pz66wuxt\n",
+            "Requirement already satisfied (use --upgrade to upgrade): fvcore==0.1 from git+https://github.com/facebookresearch/fvcore.git in /usr/local/lib/python3.6/dist-packages\n",
+            "Requirement already satisfied: numpy in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (1.18.2)\n",
+            "Requirement already satisfied: yacs>=0.1.6 in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (0.1.6)\n",
+            "Requirement already satisfied: pyyaml>=5.1 in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (5.3.1)\n",
+            "Requirement already satisfied: tqdm in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (4.38.0)\n",
+            "Requirement already satisfied: portalocker in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (1.6.0)\n",
+            "Requirement already satisfied: termcolor>=1.1 in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (1.1.0)\n",
+            "Requirement already satisfied: Pillow in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (7.0.0)\n",
+            "Requirement already satisfied: tabulate in /usr/local/lib/python3.6/dist-packages (from fvcore==0.1) (0.8.7)\n",
+            "Building wheels for collected packages: fvcore\n",
+            "  Building wheel for fvcore (setup.py) ... \u001b[?25l\u001b[?25hdone\n",
+            "  Created wheel for fvcore: filename=fvcore-0.1-cp36-none-any.whl size=42662 sha256=30bd5ababf484cd1efb02b3cfb83ac9c268e966795c42c3704ce68a75b4240a1\n",
+            "  Stored in directory: /tmp/pip-ephem-wheel-cache-qb12imrc/wheels/48/53/79/3c6485543a4455a0006f5db590ab9957622b6227011941de06\n",
+            "Successfully built fvcore\n"
+          ],
+          "name": "stdout"
+        },
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "'1.4.0'"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          },
+          "execution_count": 28
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "GeejixTmwEmI",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# install detectron2:\n",
+        "!pip install detectron2 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu100/index.html\n",
+        "# clone the repo to access PointRend code. Use the same version as the installed detectron2\n",
+        "!git clone --branch v0.1.1 https://github.com/facebookresearch/detectron2 detectron2_repo"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "ZyAvNCJMmvFF",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# You may need to restart your runtime prior to this, to let your installation take effect\n",
+        "# Some basic setup\n",
+        "# Setup detectron2 logger\n",
+        "import detectron2\n",
+        "from detectron2.utils.logger import setup_logger\n",
+        "setup_logger()\n",
+        "\n",
+        "# import some common libraries\n",
+        "import matplotlib.pyplot as plt\n",
+        "import numpy as np\n",
+        "import cv2\n",
+        "from google.colab.patches import cv2_imshow\n",
+        "\n",
+        "# import some common detectron2 utilities\n",
+        "from detectron2 import model_zoo\n",
+        "from detectron2.engine import DefaultPredictor\n",
+        "from detectron2.config import get_cfg\n",
+        "from detectron2.utils.visualizer import Visualizer\n",
+        "from detectron2.data import MetadataCatalog, DatasetCatalog\n",
+        "\n",
+        "# import PointRend project\n",
+        "import sys; sys.path.insert(1, \"detectron2_repo/projects/PointRend\")\n",
+        "from detectron2_repo.projects.PointRend import point_rend"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "b2bjrfb2LDeo",
+        "colab_type": "text"
+      },
+      "source": [
+        "# Train on a custom COCO dataset"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "tjbUIhSxUdm_",
+        "colab_type": "text"
+      },
+      "source": [
+        "In this section, we show how to train an existing detectron2 model on a custom dataset in a new format.\n",
+        "\n",
+        "We use [the fruits nuts segmentation dataset](https://github.com/Tony607/mmdetection_instance_segmentation_demo)\n",
+        "which only has 3 classes: data, fig, and hazelnut.\n",
+        "We'll train a segmentation model from an existing model pre-trained on the COCO dataset, available in detectron2's model zoo.\n",
+        "\n",
+        "Note that the COCO dataset does not have the \"data\", \"fig\" and \"hazelnut\" categories."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "7RhkndJ6JWqO",
+        "colab_type": "code",
+        "outputId": "8102c752-a6a1-48ec-e160-73185b544735",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 125
+        }
+      },
+      "source": [
+        "from google.colab import drive\n",
+        "drive.mount('/content/drive')"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Go to this URL in a browser: https://accounts.google.com/o/oauth2/auth?client_id=947318989803-6bn6qk8qdgf4n4g3pfee6491hc0brc4i.apps.googleusercontent.com&redirect_uri=urn%3aietf%3awg%3aoauth%3a2.0%3aoob&response_type=code&scope=email%20https%3a%2f%2fwww.googleapis.com%2fauth%2fdocs.test%20https%3a%2f%2fwww.googleapis.com%2fauth%2fdrive%20https%3a%2f%2fwww.googleapis.com%2fauth%2fdrive.photos.readonly%20https%3a%2f%2fwww.googleapis.com%2fauth%2fpeopleapi.readonly\n",
+            "\n",
+            "Enter your authorization code:\n",
+            "··········\n",
+            "Mounted at /content/drive\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "4Qg7zSVOulkb",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# # download, decompress the data\n",
+        "# !wget https://github.com/Tony607/detectron2_instance_segmentation_demo/releases/download/V0.1/data.zip\n",
+        "# !unzip data.zip > /dev/null"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "tVJoOm6LVJwW",
+        "colab_type": "text"
+      },
+      "source": [
+        "Register the fruits_nuts dataset to detectron2, following the [detectron2 custom dataset tutorial](https://detectron2.readthedocs.io/tutorials/datasets.html).\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Lnkg1PByUjGQ",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# from detectron2.data.datasets import register_coco_instances\n",
+        "# register_coco_instances(\"fruits_nuts\", {}, \"./data/trainval.json\", \"./data/images\")"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "MWknKqWTWIw9",
+        "colab_type": "code",
+        "outputId": "2f5a878f-6c4a-46a5-c7b8-1b6dc36f32d7",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 33
+        }
+      },
+      "source": [
+        "# fruits_nuts_metadata = MetadataCatalog.get(\"fruits_nuts\")\n",
+        "# dataset_dicts = DatasetCatalog.get(\"fruits_nuts\")"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "\u001b[32m[03/26 02:56:00 d2.data.datasets.coco]: \u001b[0mLoaded 18 images in COCO format from ./data/trainval.json\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "xI-aG4sj3cV2",
+        "colab_type": "text"
+      },
+      "source": [
+        "\n",
+        "\n",
+        "---\n",
+        "\n",
+        "\n",
+        "下面 笔画数据集\n",
+        "\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Retbdmc07rgd",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "from detectron2.data.datasets import register_coco_instances\n",
+        "register_coco_instances(\"wz\", {}, \"./drive/My Drive/pic566_28class/images566.json\", \"./drive/My Drive/pic566_28class/images\")"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "ttCvanr27rPN",
+        "colab_type": "code",
+        "outputId": "76567db3-c542-4b9e-83ef-a29715cd69e8",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 35
+        }
+      },
+      "source": [
+        "wanzheng_metadata = MetadataCatalog.get(\"wz\")\n",
+        "wanzhengdataset_dicts = DatasetCatalog.get(\"wz\")"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "\u001b[32m[04/07 16:20:07 d2.data.datasets.coco]: \u001b[0mLoaded 566 images in COCO format from ./drive/My Drive/pic566_28class/images566.json\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "6ljbWTX0Wi8E",
+        "colab_type": "text"
+      },
+      "source": [
+        "To verify the data loading is correct, let's visualize the annotations of randomly selected samples in the training set:\n",
+        "\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "q38FZu0W37T4",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# #坚果数据集\n",
+        "# import random\n",
+        "\n",
+        "# for d in random.sample(dataset_dicts, 1):\n",
+        "#    img = cv2.imread(d[\"file_name\"])#!!!!!!!!!!!!!!!!!！！！！！！！！！！！\n",
+        "#    visualizer = Visualizer(img[:, :, ::-1], metadata=fruits_nuts_metadata, scale=0.5)\n",
+        "#    vis = visualizer.draw_dataset_dict(d)\n",
+        "#    cv2_imshow(vis.get_image()[:, :, ::-1])\n",
+        "#    cv2_imshow(img)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "F5JPh6Ur8FTD",
+        "colab_type": "code",
+        "outputId": "42daa766-b27a-48e6-c736-e2ca55a5969a",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 145
+        }
+      },
+      "source": [
+        "#笔画数据集\n",
+        "import random\n",
+        "for d in random.sample(wanzhengdataset_dicts, 1):\n",
+        "    img = cv2.imread(d[\"file_name\"])\n",
+        "    visualizer = Visualizer(img[:, :, ::-1], metadata=wanzheng_metadata, scale=0.5)\n",
+        "    vis = visualizer.draw_dataset_dict(d)\n",
+        "    cv2_imshow(vis.get_image()[:, :, ::-1])"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "display_data",
+          "data": {
+            "image/png": "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\nAElFTkSuQmCC\n",
+            "text/plain": [
+              "<PIL.Image.Image image mode=RGB size=128x128 at 0x7F677029D7F0>"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          }
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "wlqXIXXhW8dA",
+        "colab_type": "text"
+      },
+      "source": [
+        "Now, let's fine-tune a coco-pretrained R50-FPN Mask R-CNN model on the fruits_nuts dataset. It takes ~6 minutes to train 300 iterations on Colab's K80 GPU.\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "7unkuuiqLdqd",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# from detectron2.engine import DefaultTrainer\n",
+        "# from detectron2.config import get_cfg\n",
+        "# import os\n",
+        "\n",
+        "# cfg = get_cfg()\n",
+        "# cfg.merge_from_file(\"./detectron2_repo/configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml\")\n",
+        "# cfg.DATASETS.TRAIN = (\"fruits_nuts\",)\n",
+        "# cfg.DATASETS.TEST = ()   # no metrics implemented for this dataset\n",
+        "# cfg.DATALOADER.NUM_WORKERS = 2\n",
+        "# cfg.MODEL.WEIGHTS = \"detectron2://COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x/137849600/model_final_f10217.pkl\"  # initialize from model zoo\n",
+        "# cfg.SOLVER.IMS_PER_BATCH = 2\n",
+        "# cfg.SOLVER.BASE_LR = 0.02\n",
+        "# cfg.SOLVER.MAX_ITER = 300    # 300 iterations seems good enough, but you can certainly train longer\n",
+        "# cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128   # faster, and good enough for this toy dataset\n",
+        "# cfg.MODEL.ROI_HEADS.NUM_CLASSES = 3  # 3 classes (data, fig, hazelnut)\n",
+        "\n",
+        "# os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)\n",
+        "# trainer = DefaultTrainer(cfg)\n",
+        "# trainer.resume_or_load(resume=False)\n",
+        "# trainer.train()"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "nEuB2wY_8kCv",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "from detectron2.engine import DefaultTrainer\n",
+        "from detectron2.config import get_cfg\n",
+        "import os\n",
+        "\n",
+        "cfg = get_cfg()\n",
+        "\n",
+        "# Add PointRend-specific config\n",
+        "point_rend.add_pointrend_config(cfg)\n",
+        "cfg.MODEL.POINT_HEAD.NUM_CLASSES = 28#修改POINT_HEAD.NUM_CLASSES为28 默认值为80\n",
+        "\n",
+        "# cfg.merge_from_file(\"./drive/My Drive/Colab Notebooks/detectron2_repo/configs/COCO-InstanceSegmentation/Base-PointRend-RCNN-FPN.yaml\")\n",
+        "cfg.merge_from_file(\"./drive/My Drive/Colab Notebooks/detectron2_repo/projects/PointRend/configs/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco.yaml\")\n",
+        "cfg.DATASETS.TRAIN = (\"wz\",)\n",
+        "cfg.DATASETS.TEST = ()   # no metrics implemented for this dataset\n",
+        "cfg.DATALOADER.NUM_WORKERS = 2\n",
+        "\n",
+        "# cfg.MODEL.WEIGHTS = \"detectron2://COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x/137849600/model_final_f10217.pkl\"  # initialize from model zoo\n",
+        "cfg.MODEL.WEIGHTS = \"https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_3c3198.pkl\"\n",
+        "\n",
+        "cfg.SOLVER.IMS_PER_BATCH = 2\n",
+        "cfg.SOLVER.BASE_LR = 0.02\n",
+        "cfg.SOLVER.MAX_ITER = 800    # 300 iterations seems good enough, but you can certainly train longer\n",
+        "cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE =256   # faster, and good enough for this toy dataset\n",
+        "cfg.MODEL.ROI_HEADS.NUM_CLASSES = 28  # 28 classes (heng,shu....)\n",
+        "# assert cfg.MODEL.ROI_HEADS.NUM_CLASSES == cfg.MODEL.POINT_HEAD.NUM_CLASSES\n",
+        "\n"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "pVtTbR_A-WBq",
+        "colab_type": "code",
+        "outputId": "79c24162-e2e1-4e45-f993-f03fa26f4b89",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 1000
+        }
+      },
+      "source": [
+        "#正式训练\n",
+        "os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)\n",
+        "trainer = DefaultTrainer(cfg)\n",
+        "trainer.resume_or_load(resume=False)\n",
+        "trainer.train()"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "\u001b[32m[04/07 16:58:41 d2.engine.defaults]: \u001b[0mModel:\n",
+            "GeneralizedRCNN(\n",
+            "  (backbone): FPN(\n",
+            "    (fpn_lateral2): Conv2d(256, 256, kernel_size=(1, 1), stride=(1, 1))\n",
+            "    (fpn_output2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n",
+            "    (fpn_lateral3): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1))\n",
+            "    (fpn_output3): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n",
+            "    (fpn_lateral4): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1))\n",
+            "    (fpn_output4): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n",
+            "    (fpn_lateral5): Conv2d(2048, 256, kernel_size=(1, 1), stride=(1, 1))\n",
+            "    (fpn_output5): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n",
+            "    (top_block): LastLevelMaxPool()\n",
+            "    (bottom_up): ResNet(\n",
+            "      (stem): BasicStem(\n",
+            "        (conv1): Conv2d(\n",
+            "          3, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False\n",
+            "          (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "        )\n",
+            "      )\n",
+            "      (res2): Sequential(\n",
+            "        (0): BottleneckBlock(\n",
+            "          (shortcut): Conv2d(\n",
+            "            64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv1): Conv2d(\n",
+            "            64, 64, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (1): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (2): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=64, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "      )\n",
+            "      (res3): Sequential(\n",
+            "        (0): BottleneckBlock(\n",
+            "          (shortcut): Conv2d(\n",
+            "            256, 512, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv1): Conv2d(\n",
+            "            256, 128, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (1): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (2): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (3): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=128, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "      )\n",
+            "      (res4): Sequential(\n",
+            "        (0): BottleneckBlock(\n",
+            "          (shortcut): Conv2d(\n",
+            "            512, 1024, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "          (conv1): Conv2d(\n",
+            "            512, 256, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (1): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (2): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (3): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (4): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (5): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=256, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=1024, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "      )\n",
+            "      (res5): Sequential(\n",
+            "        (0): BottleneckBlock(\n",
+            "          (shortcut): Conv2d(\n",
+            "            1024, 2048, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=2048, eps=1e-05)\n",
+            "          )\n",
+            "          (conv1): Conv2d(\n",
+            "            1024, 512, kernel_size=(1, 1), stride=(2, 2), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=2048, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (1): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=2048, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "        (2): BottleneckBlock(\n",
+            "          (conv1): Conv2d(\n",
+            "            2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv2): Conv2d(\n",
+            "            512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=512, eps=1e-05)\n",
+            "          )\n",
+            "          (conv3): Conv2d(\n",
+            "            512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False\n",
+            "            (norm): FrozenBatchNorm2d(num_features=2048, eps=1e-05)\n",
+            "          )\n",
+            "        )\n",
+            "      )\n",
+            "    )\n",
+            "  )\n",
+            "  (proposal_generator): RPN(\n",
+            "    (anchor_generator): DefaultAnchorGenerator(\n",
+            "      (cell_anchors): BufferList()\n",
+            "    )\n",
+            "    (rpn_head): StandardRPNHead(\n",
+            "      (conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n",
+            "      (objectness_logits): Conv2d(256, 3, kernel_size=(1, 1), stride=(1, 1))\n",
+            "      (anchor_deltas): Conv2d(256, 12, kernel_size=(1, 1), stride=(1, 1))\n",
+            "    )\n",
+            "  )\n",
+            "  (roi_heads): PointRendROIHeads(\n",
+            "    (box_pooler): ROIPooler(\n",
+            "      (level_poolers): ModuleList(\n",
+            "        (0): ROIAlign(output_size=(7, 7), spatial_scale=0.25, sampling_ratio=0, aligned=True)\n",
+            "        (1): ROIAlign(output_size=(7, 7), spatial_scale=0.125, sampling_ratio=0, aligned=True)\n",
+            "        (2): ROIAlign(output_size=(7, 7), spatial_scale=0.0625, sampling_ratio=0, aligned=True)\n",
+            "        (3): ROIAlign(output_size=(7, 7), spatial_scale=0.03125, sampling_ratio=0, aligned=True)\n",
+            "      )\n",
+            "    )\n",
+            "    (box_head): FastRCNNConvFCHead(\n",
+            "      (fc1): Linear(in_features=12544, out_features=1024, bias=True)\n",
+            "      (fc2): Linear(in_features=1024, out_features=1024, bias=True)\n",
+            "    )\n",
+            "    (box_predictor): FastRCNNOutputLayers(\n",
+            "      (cls_score): Linear(in_features=1024, out_features=29, bias=True)\n",
+            "      (bbox_pred): Linear(in_features=1024, out_features=112, bias=True)\n",
+            "    )\n",
+            "    (mask_coarse_head): CoarseMaskHead(\n",
+            "      (reduce_spatial_dim_conv): Conv2d(256, 256, kernel_size=(2, 2), stride=(2, 2))\n",
+            "      (coarse_mask_fc1): Linear(in_features=12544, out_features=1024, bias=True)\n",
+            "      (coarse_mask_fc2): Linear(in_features=1024, out_features=1024, bias=True)\n",
+            "      (prediction): Linear(in_features=1024, out_features=1372, bias=True)\n",
+            "    )\n",
+            "    (mask_point_head): StandardPointHead(\n",
+            "      (fc1): Conv1d(284, 256, kernel_size=(1,), stride=(1,))\n",
+            "      (fc2): Conv1d(284, 256, kernel_size=(1,), stride=(1,))\n",
+            "      (fc3): Conv1d(284, 256, kernel_size=(1,), stride=(1,))\n",
+            "      (predictor): Conv1d(284, 28, kernel_size=(1,), stride=(1,))\n",
+            "    )\n",
+            "  )\n",
+            ")\n",
+            "\u001b[32m[04/07 16:58:41 d2.data.datasets.coco]: \u001b[0mLoaded 566 images in COCO format from ./drive/My Drive/pic566_28class/images566.json\n",
+            "\u001b[32m[04/07 16:58:41 d2.data.build]: \u001b[0mRemoved 0 images with no usable annotations. 566 images left.\n",
+            "\u001b[32m[04/07 16:58:41 d2.data.common]: \u001b[0mSerializing 566 elements to byte tensors and concatenating them all ...\n",
+            "\u001b[32m[04/07 16:58:41 d2.data.common]: \u001b[0mSerialized dataset takes 1.53 MiB\n",
+            "\u001b[32m[04/07 16:58:41 d2.data.detection_utils]: \u001b[0mTransformGens used in training: [ResizeShortestEdge(short_edge_length=(640, 672, 704, 736, 768, 800), max_size=1333, sample_style='choice'), RandomFlip()]\n",
+            "\u001b[32m[04/07 16:58:41 d2.data.build]: \u001b[0mUsing training sampler TrainingSampler\n"
+          ],
+          "name": "stdout"
+        },
+        {
+          "output_type": "stream",
+          "text": [
+            "'roi_heads.box_predictor.cls_score.weight' has shape (81, 1024) in the checkpoint but (29, 1024) in the model! Skipped.\n",
+            "'roi_heads.box_predictor.cls_score.bias' has shape (81,) in the checkpoint but (29,) in the model! Skipped.\n",
+            "'roi_heads.box_predictor.bbox_pred.weight' has shape (320, 1024) in the checkpoint but (112, 1024) in the model! Skipped.\n",
+            "'roi_heads.box_predictor.bbox_pred.bias' has shape (320,) in the checkpoint but (112,) in the model! Skipped.\n",
+            "'roi_heads.mask_coarse_head.prediction.weight' has shape (3920, 1024) in the checkpoint but (1372, 1024) in the model! Skipped.\n",
+            "'roi_heads.mask_coarse_head.prediction.bias' has shape (3920,) in the checkpoint but (1372,) in the model! Skipped.\n",
+            "'roi_heads.mask_point_head.fc1.weight' has shape (256, 336, 1) in the checkpoint but (256, 284, 1) in the model! Skipped.\n",
+            "'roi_heads.mask_point_head.fc2.weight' has shape (256, 336, 1) in the checkpoint but (256, 284, 1) in the model! Skipped.\n",
+            "'roi_heads.mask_point_head.fc3.weight' has shape (256, 336, 1) in the checkpoint but (256, 284, 1) in the model! Skipped.\n",
+            "'roi_heads.mask_point_head.predictor.weight' has shape (80, 336, 1) in the checkpoint but (28, 284, 1) in the model! Skipped.\n",
+            "'roi_heads.mask_point_head.predictor.bias' has shape (80,) in the checkpoint but (28,) in the model! Skipped.\n"
+          ],
+          "name": "stderr"
+        },
+        {
+          "output_type": "stream",
+          "text": [
+            "\u001b[32m[04/07 16:58:41 d2.engine.train_loop]: \u001b[0mStarting training from iteration 0\n",
+            "\u001b[32m[04/07 16:59:02 d2.utils.events]: \u001b[0m eta: 0:13:53  iter: 19  total_loss: 4.955  loss_cls: 2.646  loss_box_reg: 0.944  loss_mask: 0.684  loss_mask_point: 0.640  loss_rpn_cls: 0.052  loss_rpn_loc: 0.073  time: 1.0535  data_time: 0.0171  lr: 0.000400  max_mem: 2482M\n",
+            "\u001b[32m[04/07 16:59:24 d2.utils.events]: \u001b[0m eta: 0:13:42  iter: 39  total_loss: 3.170  loss_cls: 1.058  loss_box_reg: 0.923  loss_mask: 0.602  loss_mask_point: 0.506  loss_rpn_cls: 0.022  loss_rpn_loc: 0.065  time: 1.0645  data_time: 0.0084  lr: 0.000799  max_mem: 2482M\n",
+            "\u001b[32m[04/07 16:59:45 d2.utils.events]: \u001b[0m eta: 0:13:12  iter: 59  total_loss: 2.552  loss_cls: 0.822  loss_box_reg: 0.832  loss_mask: 0.478  loss_mask_point: 0.349  loss_rpn_cls: 0.012  loss_rpn_loc: 0.072  time: 1.0617  data_time: 0.0092  lr: 0.001199  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:00:06 d2.utils.events]: \u001b[0m eta: 0:12:52  iter: 79  total_loss: 1.992  loss_cls: 0.598  loss_box_reg: 0.658  loss_mask: 0.352  loss_mask_point: 0.298  loss_rpn_cls: 0.009  loss_rpn_loc: 0.057  time: 1.0645  data_time: 0.0089  lr: 0.001598  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:00:27 d2.utils.events]: \u001b[0m eta: 0:12:28  iter: 99  total_loss: 1.629  loss_cls: 0.465  loss_box_reg: 0.540  loss_mask: 0.282  loss_mask_point: 0.262  loss_rpn_cls: 0.009  loss_rpn_loc: 0.051  time: 1.0596  data_time: 0.0085  lr: 0.001998  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:00:49 d2.utils.events]: \u001b[0m eta: 0:12:08  iter: 119  total_loss: 1.434  loss_cls: 0.406  loss_box_reg: 0.473  loss_mask: 0.251  loss_mask_point: 0.261  loss_rpn_cls: 0.008  loss_rpn_loc: 0.063  time: 1.0609  data_time: 0.0087  lr: 0.002398  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:01:10 d2.utils.events]: \u001b[0m eta: 0:11:46  iter: 139  total_loss: 1.306  loss_cls: 0.348  loss_box_reg: 0.405  loss_mask: 0.232  loss_mask_point: 0.244  loss_rpn_cls: 0.006  loss_rpn_loc: 0.056  time: 1.0621  data_time: 0.0088  lr: 0.002797  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:01:31 d2.utils.events]: \u001b[0m eta: 0:11:25  iter: 159  total_loss: 1.281  loss_cls: 0.346  loss_box_reg: 0.413  loss_mask: 0.212  loss_mask_point: 0.238  loss_rpn_cls: 0.009  loss_rpn_loc: 0.052  time: 1.0624  data_time: 0.0085  lr: 0.003197  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:01:52 d2.utils.events]: \u001b[0m eta: 0:11:04  iter: 179  total_loss: 1.145  loss_cls: 0.287  loss_box_reg: 0.370  loss_mask: 0.195  loss_mask_point: 0.218  loss_rpn_cls: 0.006  loss_rpn_loc: 0.048  time: 1.0605  data_time: 0.0086  lr: 0.003596  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:02:14 d2.utils.events]: \u001b[0m eta: 0:10:43  iter: 199  total_loss: 1.077  loss_cls: 0.305  loss_box_reg: 0.364  loss_mask: 0.191  loss_mask_point: 0.202  loss_rpn_cls: 0.009  loss_rpn_loc: 0.054  time: 1.0618  data_time: 0.0095  lr: 0.003996  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:02:35 d2.utils.events]: \u001b[0m eta: 0:10:22  iter: 219  total_loss: 1.233  loss_cls: 0.298  loss_box_reg: 0.376  loss_mask: 0.203  loss_mask_point: 0.202  loss_rpn_cls: 0.008  loss_rpn_loc: 0.061  time: 1.0614  data_time: 0.0087  lr: 0.004396  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:02:56 d2.utils.events]: \u001b[0m eta: 0:10:00  iter: 239  total_loss: 1.195  loss_cls: 0.346  loss_box_reg: 0.351  loss_mask: 0.187  loss_mask_point: 0.224  loss_rpn_cls: 0.007  loss_rpn_loc: 0.050  time: 1.0607  data_time: 0.0087  lr: 0.004795  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:03:17 d2.utils.events]: \u001b[0m eta: 0:09:38  iter: 259  total_loss: 1.126  loss_cls: 0.347  loss_box_reg: 0.365  loss_mask: 0.195  loss_mask_point: 0.182  loss_rpn_cls: 0.010  loss_rpn_loc: 0.060  time: 1.0610  data_time: 0.0089  lr: 0.005195  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:03:38 d2.utils.events]: \u001b[0m eta: 0:09:16  iter: 279  total_loss: 1.084  loss_cls: 0.275  loss_box_reg: 0.367  loss_mask: 0.168  loss_mask_point: 0.207  loss_rpn_cls: 0.009  loss_rpn_loc: 0.051  time: 1.0596  data_time: 0.0086  lr: 0.005594  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:03:59 d2.utils.events]: \u001b[0m eta: 0:08:54  iter: 299  total_loss: 1.067  loss_cls: 0.278  loss_box_reg: 0.346  loss_mask: 0.165  loss_mask_point: 0.196  loss_rpn_cls: 0.008  loss_rpn_loc: 0.059  time: 1.0592  data_time: 0.0087  lr: 0.005994  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:04:20 d2.utils.events]: \u001b[0m eta: 0:08:33  iter: 319  total_loss: 1.015  loss_cls: 0.253  loss_box_reg: 0.358  loss_mask: 0.141  loss_mask_point: 0.171  loss_rpn_cls: 0.006  loss_rpn_loc: 0.066  time: 1.0588  data_time: 0.0084  lr: 0.006394  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:04:42 d2.utils.events]: \u001b[0m eta: 0:08:12  iter: 339  total_loss: 1.004  loss_cls: 0.263  loss_box_reg: 0.342  loss_mask: 0.144  loss_mask_point: 0.175  loss_rpn_cls: 0.009  loss_rpn_loc: 0.060  time: 1.0602  data_time: 0.0080  lr: 0.006793  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:05:03 d2.utils.events]: \u001b[0m eta: 0:07:51  iter: 359  total_loss: 0.982  loss_cls: 0.275  loss_box_reg: 0.346  loss_mask: 0.148  loss_mask_point: 0.161  loss_rpn_cls: 0.004  loss_rpn_loc: 0.064  time: 1.0592  data_time: 0.0101  lr: 0.007193  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:05:24 d2.utils.events]: \u001b[0m eta: 0:07:30  iter: 379  total_loss: 0.914  loss_cls: 0.229  loss_box_reg: 0.356  loss_mask: 0.137  loss_mask_point: 0.176  loss_rpn_cls: 0.006  loss_rpn_loc: 0.054  time: 1.0597  data_time: 0.0090  lr: 0.007592  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:05:45 d2.utils.events]: \u001b[0m eta: 0:07:08  iter: 399  total_loss: 0.866  loss_cls: 0.205  loss_box_reg: 0.307  loss_mask: 0.127  loss_mask_point: 0.160  loss_rpn_cls: 0.010  loss_rpn_loc: 0.068  time: 1.0599  data_time: 0.0087  lr: 0.007992  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:06:06 d2.utils.events]: \u001b[0m eta: 0:06:46  iter: 419  total_loss: 0.993  loss_cls: 0.220  loss_box_reg: 0.347  loss_mask: 0.131  loss_mask_point: 0.174  loss_rpn_cls: 0.010  loss_rpn_loc: 0.055  time: 1.0577  data_time: 0.0096  lr: 0.008392  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:06:27 d2.utils.events]: \u001b[0m eta: 0:06:25  iter: 439  total_loss: 0.899  loss_cls: 0.195  loss_box_reg: 0.330  loss_mask: 0.133  loss_mask_point: 0.169  loss_rpn_cls: 0.009  loss_rpn_loc: 0.061  time: 1.0586  data_time: 0.0088  lr: 0.008791  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:06:49 d2.utils.events]: \u001b[0m eta: 0:06:03  iter: 459  total_loss: 1.033  loss_cls: 0.278  loss_box_reg: 0.349  loss_mask: 0.139  loss_mask_point: 0.185  loss_rpn_cls: 0.010  loss_rpn_loc: 0.064  time: 1.0588  data_time: 0.0087  lr: 0.009191  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:07:09 d2.utils.events]: \u001b[0m eta: 0:05:41  iter: 479  total_loss: 1.007  loss_cls: 0.280  loss_box_reg: 0.345  loss_mask: 0.133  loss_mask_point: 0.162  loss_rpn_cls: 0.009  loss_rpn_loc: 0.052  time: 1.0581  data_time: 0.0079  lr: 0.009590  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:07:31 d2.utils.events]: \u001b[0m eta: 0:05:20  iter: 499  total_loss: 1.044  loss_cls: 0.275  loss_box_reg: 0.362  loss_mask: 0.122  loss_mask_point: 0.162  loss_rpn_cls: 0.009  loss_rpn_loc: 0.060  time: 1.0588  data_time: 0.0085  lr: 0.009990  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:07:51 d2.utils.events]: \u001b[0m eta: 0:04:59  iter: 519  total_loss: 0.906  loss_cls: 0.223  loss_box_reg: 0.291  loss_mask: 0.108  loss_mask_point: 0.158  loss_rpn_cls: 0.011  loss_rpn_loc: 0.077  time: 1.0570  data_time: 0.0086  lr: 0.010390  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:08:13 d2.utils.events]: \u001b[0m eta: 0:04:37  iter: 539  total_loss: 0.921  loss_cls: 0.252  loss_box_reg: 0.334  loss_mask: 0.121  loss_mask_point: 0.162  loss_rpn_cls: 0.009  loss_rpn_loc: 0.069  time: 1.0572  data_time: 0.0094  lr: 0.010789  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:08:34 d2.utils.events]: \u001b[0m eta: 0:04:16  iter: 559  total_loss: 0.856  loss_cls: 0.171  loss_box_reg: 0.318  loss_mask: 0.112  loss_mask_point: 0.170  loss_rpn_cls: 0.007  loss_rpn_loc: 0.046  time: 1.0569  data_time: 0.0092  lr: 0.011189  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:08:55 d2.utils.events]: \u001b[0m eta: 0:03:55  iter: 579  total_loss: 0.861  loss_cls: 0.208  loss_box_reg: 0.315  loss_mask: 0.121  loss_mask_point: 0.150  loss_rpn_cls: 0.008  loss_rpn_loc: 0.056  time: 1.0577  data_time: 0.0084  lr: 0.011588  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:09:16 d2.utils.events]: \u001b[0m eta: 0:03:33  iter: 599  total_loss: 0.851  loss_cls: 0.185  loss_box_reg: 0.302  loss_mask: 0.116  loss_mask_point: 0.146  loss_rpn_cls: 0.011  loss_rpn_loc: 0.059  time: 1.0573  data_time: 0.0089  lr: 0.011988  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:09:37 d2.utils.events]: \u001b[0m eta: 0:03:12  iter: 619  total_loss: 0.903  loss_cls: 0.226  loss_box_reg: 0.327  loss_mask: 0.113  loss_mask_point: 0.153  loss_rpn_cls: 0.010  loss_rpn_loc: 0.059  time: 1.0570  data_time: 0.0086  lr: 0.012388  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:09:59 d2.utils.events]: \u001b[0m eta: 0:02:51  iter: 639  total_loss: 0.901  loss_cls: 0.229  loss_box_reg: 0.353  loss_mask: 0.114  loss_mask_point: 0.160  loss_rpn_cls: 0.008  loss_rpn_loc: 0.051  time: 1.0576  data_time: 0.0090  lr: 0.012787  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:10:20 d2.utils.events]: \u001b[0m eta: 0:02:29  iter: 659  total_loss: 0.900  loss_cls: 0.239  loss_box_reg: 0.342  loss_mask: 0.111  loss_mask_point: 0.152  loss_rpn_cls: 0.007  loss_rpn_loc: 0.048  time: 1.0572  data_time: 0.0095  lr: 0.013187  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:10:41 d2.utils.events]: \u001b[0m eta: 0:02:08  iter: 679  total_loss: 0.819  loss_cls: 0.172  loss_box_reg: 0.304  loss_mask: 0.095  loss_mask_point: 0.144  loss_rpn_cls: 0.009  loss_rpn_loc: 0.058  time: 1.0575  data_time: 0.0083  lr: 0.013586  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:11:02 d2.utils.events]: \u001b[0m eta: 0:01:47  iter: 699  total_loss: 0.925  loss_cls: 0.227  loss_box_reg: 0.360  loss_mask: 0.106  loss_mask_point: 0.151  loss_rpn_cls: 0.008  loss_rpn_loc: 0.065  time: 1.0575  data_time: 0.0095  lr: 0.013986  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:11:23 d2.utils.events]: \u001b[0m eta: 0:01:26  iter: 719  total_loss: 0.850  loss_cls: 0.203  loss_box_reg: 0.318  loss_mask: 0.110  loss_mask_point: 0.163  loss_rpn_cls: 0.011  loss_rpn_loc: 0.054  time: 1.0573  data_time: 0.0079  lr: 0.014386  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:11:44 d2.utils.events]: \u001b[0m eta: 0:01:04  iter: 739  total_loss: 0.844  loss_cls: 0.192  loss_box_reg: 0.310  loss_mask: 0.105  loss_mask_point: 0.154  loss_rpn_cls: 0.007  loss_rpn_loc: 0.059  time: 1.0564  data_time: 0.0087  lr: 0.014785  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:12:05 d2.utils.events]: \u001b[0m eta: 0:00:43  iter: 759  total_loss: 0.865  loss_cls: 0.181  loss_box_reg: 0.329  loss_mask: 0.101  loss_mask_point: 0.151  loss_rpn_cls: 0.008  loss_rpn_loc: 0.070  time: 1.0564  data_time: 0.0089  lr: 0.015185  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:12:25 d2.utils.events]: \u001b[0m eta: 0:00:22  iter: 779  total_loss: 0.874  loss_cls: 0.193  loss_box_reg: 0.325  loss_mask: 0.107  loss_mask_point: 0.152  loss_rpn_cls: 0.010  loss_rpn_loc: 0.057  time: 1.0550  data_time: 0.0101  lr: 0.015584  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:12:47 d2.utils.events]: \u001b[0m eta: 0:00:01  iter: 799  total_loss: 0.924  loss_cls: 0.246  loss_box_reg: 0.337  loss_mask: 0.105  loss_mask_point: 0.138  loss_rpn_cls: 0.011  loss_rpn_loc: 0.055  time: 1.0548  data_time: 0.0087  lr: 0.015984  max_mem: 2482M\n",
+            "\u001b[32m[04/07 17:12:48 d2.engine.hooks]: \u001b[0mOverall training speed: 797 iterations in 0:14:01 (1.0561 s / it)\n",
+            "\u001b[32m[04/07 17:12:48 d2.engine.hooks]: \u001b[0mTotal training time: 0:14:04 (0:00:03 on hooks)\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "0e4vdDIOXyxF",
+        "colab_type": "text"
+      },
+      "source": [
+        "Now, we perform inference with the trained model on the fruits_nuts dataset. First, let's create a predictor using the model we just trained:\n",
+        "\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "YM6RCjvB9vU4",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# Look at training curves in tensorboard:\n",
+        "%load_ext tensorboard\n",
+        "%tensorboard --logdir output"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Ya5nEuMELeq8",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "cfg.MODEL.WEIGHTS = os.path.join(cfg.OUTPUT_DIR, \"model_final.pth\")\n",
+        "cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5   # set the testing threshold for this model\n",
+        "cfg.DATASETS.TEST = (\"wz\", )\n",
+        "predictor = DefaultPredictor(cfg)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "qWq1XHfDWiXO",
+        "colab_type": "text"
+      },
+      "source": [
+        "Then, we randomly select several samples to visualize the prediction results."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "U5LhISJqWXgM",
+        "colab_type": "code",
+        "outputId": "3a7b50e9-0198-474f-ec7e-5e869695778e",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 458
+        }
+      },
+      "source": [
+        "from detectron2.utils.visualizer import ColorMode\n",
+        "\n",
+        "for d in random.sample(wanzhengdataset_dicts, 1):    \n",
+        "    im = cv2.imread(d[\"file_name\"])\n",
+        "    outputs = predictor(im)\n",
+        "    v = Visualizer(im[:, :, ::-1],\n",
+        "                   metadata=wanzheng_metadata, \n",
+        "                   scale=0.8, \n",
+        "                   instance_mode=ColorMode.IMAGE_BW   # remove the colors of unsegmented pixels用于实例化可视化的不同颜色模式  IMAGE_BW：与IMAGE相同，但将所有不带遮罩的区域转换为灰度。仅适用于按实例绘制蒙版预测\n",
+        "    )\n",
+        "    v = v.draw_instance_predictions(outputs[\"instances\"].to(\"cpu\"))\n",
+        "    cv2_imshow(v.get_image()[:, :, ::-1])\n",
+        "\n",
+        "\n",
+        "    #如何输出单独的mask\n",
+        "    masks=np.asnarray(outputs[\"instances\"].to(\"cpu\").pred_masks)#[n,256,256]n为笔画数\n",
+        "    for mask in masks:\n",
+        "      mask=mask.astype(\"unit8\") #mask从[false,flase]到[00001100]\n",
+        "      mask=mask*255       #变成二值图\n",
+        "      cv2_imshow(mask)"
+      ],
+      "execution_count": 25,
+      "outputs": [
+        {
+          "output_type": "display_data",
+          "data": {
+            "image/png": "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\n",
+            "text/plain": [
+              "<PIL.Image.Image image mode=RGB size=204x204 at 0x7F911D65BDA0>"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          }
+        },
+        {
+          "output_type": "error",
+          "ename": "AttributeError",
+          "evalue": "ignored",
+          "traceback": [
+            "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+            "\u001b[0;31mAttributeError\u001b[0m                            Traceback (most recent call last)",
+            "\u001b[0;32m<ipython-input-25-11e2d503f414>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m()\u001b[0m\n\u001b[1;32m     14\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     15\u001b[0m     \u001b[0;31m#如何输出单独的mask\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 16\u001b[0;31m     \u001b[0mmasks\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mnp\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0masnarray\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0moutputs\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;34m\"instances\"\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mto\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"cpu\"\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mpred_masks\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     17\u001b[0m     \u001b[0;32mfor\u001b[0m \u001b[0mmask\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mmasks\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     18\u001b[0m       \u001b[0mmask\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mmask\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mastype\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"unit8\"\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;31mAttributeError\u001b[0m: module 'numpy' has no attribute 'asnarray'"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "hLH2qPSMgOSk",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# look at the outputs. See https://detectron2.readthedocs.io/tutorials/models.html#model-output-format for specification\n",
+        "outputs[\"instances\"].pred_classes\n",
+        "outputs[\"instances\"].pred_boxes\n",
+        "outputs[\"instances\"]"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "t_bo0cypwllj",
+        "colab_type": "code",
+        "outputId": "a59ab3d3-0cc7-4c54-d3fd-219f98528d83",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 55
+        }
+      },
+      "source": [
+        "wanzheng_metadata"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "Metadata(evaluator_type='coco', image_root='./drive/My Drive/pic566_28class/images', json_file='./drive/My Drive/pic566_28class/images566.json', name='wz', thing_classes=['piezhe', 'heng', 'hengzhewangou', 'pie', 'na', 'shuwangou', 'henggou', 'shugou', 'hengzhegou', 'hengzhezhezhegou', 'hengpie', 'shu', 'shuzhezhegou', 'dian', 'wangou', 'ti', 'shuti', 'shuzhe', 'wogou', 'hengzhe', 'xiegou', 'hengzhezhepie', 'hengzhewan', 'piedian', 'shuzhepie', 'hengxiegou', 'hengzheti', 'shuwan'], thing_dataset_id_to_contiguous_id={1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9, 11: 10, 12: 11, 13: 12, 14: 13, 15: 14, 16: 15, 17: 16, 18: 17, 19: 18, 20: 19, 21: 20, 22: 21, 23: 22, 24: 23, 25: 24, 26: 25, 27: 26, 28: 27})"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          },
+          "execution_count": 24
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "rvn2tueICLiE",
+        "colab_type": "text"
+      },
+      "source": [
+        "We can also evaluate its performance using AP metric implemented in COCO API. This gives an AP of ~70%. Not bad!"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "v4Y_TQ6YCOWT",
+        "colab_type": "code",
+        "outputId": "d81020aa-1eb6-43ef-88a5-97b0a2e16c01",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 1000
+        }
+      },
+      "source": [
+        "from detectron2.evaluation import COCOEvaluator, inference_on_dataset\n",
+        "from detectron2.data import build_detection_test_loader\n",
+        "evaluator = COCOEvaluator(\"wz\", cfg, False, output_dir=\"./output/\")\n",
+        "val_loader = build_detection_test_loader(cfg, \"wz\")\n",
+        "inference_on_dataset(trainer.model, val_loader, evaluator)\n",
+        "# another equivalent way is to use trainer.test"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "\u001b[32m[04/07 17:16:09 d2.data.datasets.coco]: \u001b[0mLoaded 566 images in COCO format from ./drive/My Drive/pic566_28class/images566.json\n",
+            "\u001b[32m[04/07 17:16:09 d2.data.common]: \u001b[0mSerializing 566 elements to byte tensors and concatenating them all ...\n",
+            "\u001b[32m[04/07 17:16:09 d2.data.common]: \u001b[0mSerialized dataset takes 1.53 MiB\n",
+            "\u001b[32m[04/07 17:16:09 d2.evaluation.evaluator]: \u001b[0mStart inference on 566 images\n",
+            "\u001b[32m[04/07 17:16:13 d2.evaluation.evaluator]: \u001b[0mInference done 11/566. 0.3023 s / img. ETA=0:02:49\n",
+            "\u001b[32m[04/07 17:16:18 d2.evaluation.evaluator]: \u001b[0mInference done 28/566. 0.2937 s / img. ETA=0:02:40\n",
+            "\u001b[32m[04/07 17:16:23 d2.evaluation.evaluator]: \u001b[0mInference done 45/566. 0.2978 s / img. ETA=0:02:37\n",
+            "\u001b[32m[04/07 17:16:28 d2.evaluation.evaluator]: \u001b[0mInference done 61/566. 0.3017 s / img. ETA=0:02:35\n",
+            "\u001b[32m[04/07 17:16:33 d2.evaluation.evaluator]: \u001b[0mInference done 77/566. 0.3030 s / img. ETA=0:02:30\n",
+            "\u001b[32m[04/07 17:16:38 d2.evaluation.evaluator]: \u001b[0mInference done 93/566. 0.3052 s / img. ETA=0:02:27\n",
+            "\u001b[32m[04/07 17:16:44 d2.evaluation.evaluator]: \u001b[0mInference done 110/566. 0.3045 s / img. ETA=0:02:21\n",
+            "\u001b[32m[04/07 17:16:49 d2.evaluation.evaluator]: \u001b[0mInference done 127/566. 0.3041 s / img. ETA=0:02:16\n",
+            "\u001b[32m[04/07 17:16:54 d2.evaluation.evaluator]: \u001b[0mInference done 143/566. 0.3044 s / img. ETA=0:02:11\n",
+            "\u001b[32m[04/07 17:16:59 d2.evaluation.evaluator]: \u001b[0mInference done 160/566. 0.3039 s / img. ETA=0:02:05\n",
+            "\u001b[32m[04/07 17:17:04 d2.evaluation.evaluator]: \u001b[0mInference done 175/566. 0.3066 s / img. ETA=0:02:02\n",
+            "\u001b[32m[04/07 17:17:09 d2.evaluation.evaluator]: \u001b[0mInference done 190/566. 0.3085 s / img. ETA=0:01:58\n",
+            "\u001b[32m[04/07 17:17:14 d2.evaluation.evaluator]: \u001b[0mInference done 205/566. 0.3098 s / img. ETA=0:01:54\n",
+            "\u001b[32m[04/07 17:17:19 d2.evaluation.evaluator]: \u001b[0mInference done 221/566. 0.3102 s / img. ETA=0:01:49\n",
+            "\u001b[32m[04/07 17:17:25 d2.evaluation.evaluator]: \u001b[0mInference done 237/566. 0.3103 s / img. ETA=0:01:44\n",
+            "\u001b[32m[04/07 17:17:30 d2.evaluation.evaluator]: \u001b[0mInference done 254/566. 0.3098 s / img. ETA=0:01:38\n",
+            "\u001b[32m[04/07 17:17:35 d2.evaluation.evaluator]: \u001b[0mInference done 271/566. 0.3094 s / img. ETA=0:01:33\n",
+            "\u001b[32m[04/07 17:17:40 d2.evaluation.evaluator]: \u001b[0mInference done 288/566. 0.3085 s / img. ETA=0:01:27\n",
+            "\u001b[32m[04/07 17:17:45 d2.evaluation.evaluator]: \u001b[0mInference done 305/566. 0.3075 s / img. ETA=0:01:21\n",
+            "\u001b[32m[04/07 17:17:50 d2.evaluation.evaluator]: \u001b[0mInference done 321/566. 0.3078 s / img. ETA=0:01:16\n",
+            "\u001b[32m[04/07 17:17:55 d2.evaluation.evaluator]: \u001b[0mInference done 337/566. 0.3078 s / img. ETA=0:01:11\n",
+            "\u001b[32m[04/07 17:18:00 d2.evaluation.evaluator]: \u001b[0mInference done 353/566. 0.3081 s / img. ETA=0:01:06\n",
+            "\u001b[32m[04/07 17:18:06 d2.evaluation.evaluator]: \u001b[0mInference done 369/566. 0.3086 s / img. ETA=0:01:02\n",
+            "\u001b[32m[04/07 17:18:11 d2.evaluation.evaluator]: \u001b[0mInference done 385/566. 0.3086 s / img. ETA=0:00:56\n",
+            "\u001b[32m[04/07 17:18:16 d2.evaluation.evaluator]: \u001b[0mInference done 401/566. 0.3086 s / img. ETA=0:00:51\n",
+            "\u001b[32m[04/07 17:18:21 d2.evaluation.evaluator]: \u001b[0mInference done 418/566. 0.3083 s / img. ETA=0:00:46\n",
+            "\u001b[32m[04/07 17:18:26 d2.evaluation.evaluator]: \u001b[0mInference done 435/566. 0.3076 s / img. ETA=0:00:41\n",
+            "\u001b[32m[04/07 17:18:31 d2.evaluation.evaluator]: \u001b[0mInference done 450/566. 0.3082 s / img. ETA=0:00:36\n",
+            "\u001b[32m[04/07 17:18:36 d2.evaluation.evaluator]: \u001b[0mInference done 465/566. 0.3090 s / img. ETA=0:00:31\n",
+            "\u001b[32m[04/07 17:18:41 d2.evaluation.evaluator]: \u001b[0mInference done 481/566. 0.3094 s / img. ETA=0:00:26\n",
+            "\u001b[32m[04/07 17:18:47 d2.evaluation.evaluator]: \u001b[0mInference done 497/566. 0.3099 s / img. ETA=0:00:21\n",
+            "\u001b[32m[04/07 17:18:52 d2.evaluation.evaluator]: \u001b[0mInference done 513/566. 0.3103 s / img. ETA=0:00:16\n",
+            "\u001b[32m[04/07 17:18:57 d2.evaluation.evaluator]: \u001b[0mInference done 529/566. 0.3104 s / img. ETA=0:00:11\n",
+            "\u001b[32m[04/07 17:19:02 d2.evaluation.evaluator]: \u001b[0mInference done 545/566. 0.3107 s / img. ETA=0:00:06\n",
+            "\u001b[32m[04/07 17:19:07 d2.evaluation.evaluator]: \u001b[0mInference done 561/566. 0.3107 s / img. ETA=0:00:01\n",
+            "\u001b[32m[04/07 17:19:09 d2.evaluation.evaluator]: \u001b[0mTotal inference time: 0:02:57.964124 (0.317227 s / img per device, on 1 devices)\n",
+            "\u001b[32m[04/07 17:19:09 d2.evaluation.evaluator]: \u001b[0mTotal inference pure compute time: 0:02:54 (0.310668 s / img per device, on 1 devices)\n",
+            "\u001b[32m[04/07 17:19:09 d2.evaluation.coco_evaluation]: \u001b[0mPreparing results for COCO format ...\n",
+            "\u001b[32m[04/07 17:19:09 d2.evaluation.coco_evaluation]: \u001b[0mSaving results to ./output/coco_instances_results.json\n",
+            "\u001b[32m[04/07 17:19:09 d2.evaluation.coco_evaluation]: \u001b[0mEvaluating predictions ...\n",
+            "Loading and preparing results...\n"
+          ],
+          "name": "stdout"
+        },
+        {
+          "output_type": "error",
+          "ename": "NameError",
+          "evalue": "ignored",
+          "traceback": [
+            "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+            "\u001b[0;31mNameError\u001b[0m                                 Traceback (most recent call last)",
+            "\u001b[0;32m<ipython-input-25-1fa900de22ea>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m()\u001b[0m\n\u001b[1;32m      3\u001b[0m \u001b[0mevaluator\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mCOCOEvaluator\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"wz\"\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mcfg\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;32mFalse\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0moutput_dir\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;34m\"./output/\"\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      4\u001b[0m \u001b[0mval_loader\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mbuild_detection_test_loader\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mcfg\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m\"wz\"\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 5\u001b[0;31m \u001b[0minference_on_dataset\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mtrainer\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mmodel\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mval_loader\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mevaluator\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      6\u001b[0m \u001b[0;31m# another equivalent way is to use trainer.test\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;32m/usr/local/lib/python3.6/dist-packages/detectron2/evaluation/evaluator.py\u001b[0m in \u001b[0;36minference_on_dataset\u001b[0;34m(model, data_loader, evaluator)\u001b[0m\n\u001b[1;32m    156\u001b[0m     )\n\u001b[1;32m    157\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 158\u001b[0;31m     \u001b[0mresults\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mevaluator\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mevaluate\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    159\u001b[0m     \u001b[0;31m# An evaluator may return None when not in main process.\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    160\u001b[0m     \u001b[0;31m# Replace it by an empty dict instead to make it easier for downstream code to handle\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;32m/usr/local/lib/python3.6/dist-packages/detectron2/evaluation/coco_evaluation.py\u001b[0m in \u001b[0;36mevaluate\u001b[0;34m(self)\u001b[0m\n\u001b[1;32m    140\u001b[0m             \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_eval_box_proposals\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mpredictions\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    141\u001b[0m         \u001b[0;32mif\u001b[0m \u001b[0;34m\"instances\"\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mpredictions\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;36m0\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 142\u001b[0;31m             \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_eval_predictions\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mset\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_tasks\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mpredictions\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    143\u001b[0m         \u001b[0;31m# Copy so the caller can do whatever with results\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    144\u001b[0m         \u001b[0;32mreturn\u001b[0m \u001b[0mcopy\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mdeepcopy\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_results\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;32m/usr/local/lib/python3.6/dist-packages/detectron2/evaluation/coco_evaluation.py\u001b[0m in \u001b[0;36m_eval_predictions\u001b[0;34m(self, tasks, predictions)\u001b[0m\n\u001b[1;32m    183\u001b[0m                     \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_coco_api\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mcoco_results\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mtask\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mkpt_oks_sigmas\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_kpt_oks_sigmas\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    184\u001b[0m                 )\n\u001b[0;32m--> 185\u001b[0;31m                 \u001b[0;32mif\u001b[0m \u001b[0mlen\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mcoco_results\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;34m>\u001b[0m \u001b[0;36m0\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    186\u001b[0m                 \u001b[0;32melse\u001b[0m \u001b[0;32mNone\u001b[0m  \u001b[0;31m# cocoapi does not handle empty results very well\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    187\u001b[0m             )\n",
+            "\u001b[0;32m/usr/local/lib/python3.6/dist-packages/detectron2/evaluation/coco_evaluation.py\u001b[0m in \u001b[0;36m_evaluate_predictions_on_coco\u001b[0;34m(coco_gt, coco_results, iou_type, kpt_oks_sigmas)\u001b[0m\n\u001b[1;32m    488\u001b[0m             \u001b[0mc\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mpop\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"bbox\"\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    489\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 490\u001b[0;31m     \u001b[0mcoco_dt\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mcoco_gt\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mloadRes\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mcoco_results\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    491\u001b[0m     \u001b[0mcoco_eval\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mCOCOeval\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mcoco_gt\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mcoco_dt\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0miou_type\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    492\u001b[0m     \u001b[0;31m# Use the COCO default keypoint OKS sigmas unless overrides are specified\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;32m/usr/local/lib/python3.6/dist-packages/pycocotools/coco.py\u001b[0m in \u001b[0;36mloadRes\u001b[0;34m(self, resFile)\u001b[0m\n\u001b[1;32m    306\u001b[0m         \u001b[0mprint\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m'Loading and preparing results...'\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    307\u001b[0m         \u001b[0mtic\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mtime\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mtime\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 308\u001b[0;31m         \u001b[0;32mif\u001b[0m \u001b[0mtype\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mresFile\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;34m==\u001b[0m \u001b[0mstr\u001b[0m \u001b[0;32mor\u001b[0m \u001b[0mtype\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mresFile\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;34m==\u001b[0m \u001b[0municode\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    309\u001b[0m             \u001b[0manns\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mjson\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mload\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mopen\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mresFile\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    310\u001b[0m         \u001b[0;32melif\u001b[0m \u001b[0mtype\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mresFile\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;34m==\u001b[0m \u001b[0mnp\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mndarray\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;31mNameError\u001b[0m: name 'unicode' is not defined"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "wZ6lYrCqLLLW",
+        "colab_type": "text"
+      },
+      "source": [
+        "## Benchmark inference speed"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "PxRHYcAC_Z0f",
+        "colab_type": "code",
+        "outputId": "3ad8069b-efd1-4d61-c5f5-e290e562cfdb",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 35
+        }
+      },
+      "source": [
+        "import time\n",
+        "times = []\n",
+        "for i in range(20):\n",
+        "    start_time = time.time()\n",
+        "    outputs = predictor(im)\n",
+        "    delta = time.time() - start_time\n",
+        "    times.append(delta)\n",
+        "mean_delta = np.array(times).mean()\n",
+        "fps = 1 / mean_delta\n",
+        "print(\"Average(sec):{:.2f},fps:{:.2f}\".format(mean_delta, fps))"
+      ],
+      "execution_count": 0,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Average(sec):0.30,fps:3.31\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "WFMOqBbWEh5v",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        ""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    }
+  ]
+}
